@@ -3,22 +3,24 @@ title: Welcome
 created: 01SEP2026
 modified: 02SEP2026
 font: Roboto
-view: "40,20,1"
+view: "58.9,300.56,1"
 elements:
   - id: t1
     type: text
     x: 60
     y: 40
     w: 560
+    h: 421
   - id: t2
     type: text
     x: 60
     y: 470
     w: 560
+    h: 224
   - id: b1
     type: box
-    x: 700
-    y: 60
+    x: 820.04
+    y: 82.37
     w: 230
     h: 100
     fill: none
@@ -28,8 +30,8 @@ elements:
   - id: b2
     type: box
     shape: sticky
-    x: 700
-    y: 300
+    x: 699.61
+    y: 300.25
     w: 200
     h: 150
     fill: "#ffe9a8"
@@ -39,7 +41,8 @@ elements:
   - id: l1
     type: line
     from: b1
-    to: b2
+    x2: 794.63
+    y2: 300.62
     arrowStart: false
     arrowEnd: true
     stroke: "#8a63c9"
@@ -55,14 +58,32 @@ elements:
     d: M4 46 Q42 4 80 46 T156 46 T230 30
     stroke: "#5aa552"
     strokeWidth: 3
+  - id: t9fv73e
+    type: text
+    x: 613.53
+    y: 631.86
+    w: 544
+    h: 192
+  - id: tsnprx9
+    type: text
+    x: 16.72
+    y: -298.97
+    w: 340
+    h: 54
+  - id: ty1gwnk
+    type: text
+    x: -432.28
+    y: -318.97
+    w: 340
+    h: 54
 ---
 
 <!--@t1-->
 # Welcome
 
 This page is a plain Markdown file at `notes/Welcome.md`. The folders and files
-in the sidebar *are* the folders and files on disk — nothing is hidden away in
-a database.
+in the sidebar *are* the folders and files on disk — nothing is hidden away in a
+database.
 
 ## Getting around
 
@@ -94,3 +115,18 @@ See also [[Kickoff]] and [[Keyboard shortcuts]].
 
 <!--@b2-->
 Sticky notes and ellipses come from the shape menu.
+
+<!--@t9fv73e-->
+|   |   |   |   |
+| --- | --- | --- | --- |
+|   |   |   |   |
+|   |   |   |   |
+|   |   |   |   |
+
+\
+
+<!--@tsnprx9-->
+\
+
+<!--@ty1gwnk-->
+\

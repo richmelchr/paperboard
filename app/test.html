@@ -111,6 +111,21 @@ t('blank line splits', mdToHtml('one\n\ntwo'), '<p>one</p><p>two</p>');
 trip('long paragraph', '<p>' + 'word '.repeat(30).trim() + '</p>');
 trip('break then text', '<p>alpha<br>beta gamma</p>');
 
+out.insertAdjacentHTML('beforeend', '<h2>Wrapping long prose</h2>');
+const long = 'word '.repeat(40).trim();
+t('wraps at 80 cols',
+  htmlToMd('<p>' + long + '</p>').split('\n').every(l => l.length <= 80), true);
+t('wrapping is invisible on read', mdToHtml(htmlToMd('<p>' + long + '</p>')), '<p>' + long + '</p>');
+t('never splits a tag',
+  htmlToMd('<p>' + 'pad '.repeat(20) + '<span style="color:#d8574b;font-size:20px">tinted words</span> tail</p>')
+    .split('\n').every(l => (l.match(/</g) || []).length === (l.match(/>/g) || []).length), true);
+trip('styled span past the wrap point',
+  '<p>' + 'pad '.repeat(20) + '<span style="color:#d8574b">tinted</span> tail</p>');
+t('never splits a link target',
+  htmlToMd('<p>' + 'pad '.repeat(20) + '<a href="https://example.com/a-very-long-path/here">link</a></p>')
+    .includes('](https://example.com/a-very-long-path/here)'), true);
+t('short lines are left alone', htmlToMd('<p>just a short line</p>'), 'just a short line');
+
 out.insertAdjacentHTML('beforeend', '<h2>Whole-file round trip</h2>');
 const doc = {
   meta: { title: 'Kick: off', created: '01JAN2026', modified: '02JAN2026',

@@ -322,6 +322,46 @@ const escAttr = t => escHtml(t).replace(/"/g, '&quot;');
 const escText = t => escHtml(t).replace(/([\\`*_\[\]])/g, '\\$1');
 const escStart = t => t.replace(/^(\s*)([-*+>#]|\d+[.)])(\s)/, '$1\\$2$3');
 
+const WRAP = 80;
+
+/**
+ * Soft-wrap a paragraph so the files stay diff-friendly. Reading joins these
+ * lines back with a space, so wrapping is invisible in the app — but it keeps
+ * a one-word edit from rewriting a whole paragraph in `git diff`.
+ *
+ * Splits only at spaces that sit outside tags, code spans and link targets, so
+ * `<span style="...">` and `[text](url with space)` are never broken up.
+ */
+function wrapParagraph(text) {
+  if (text.length <= WRAP) return escStart(text);
+  const atoms = [];
+  let buf = '', tag = false, code = false, link = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '`' && !tag) code = !code;
+    else if (ch === '<' && !code) tag = true;
+    else if (ch === '>' && !code) tag = false;
+    else if (ch === '(' && text[i - 1] === ']' && !code) link++;
+    else if (ch === ')' && link && !code) link--;
+    if (ch === ' ' && !tag && !code && !link) {
+      if (buf) atoms.push(buf);
+      buf = '';
+      continue;
+    }
+    buf += ch;
+  }
+  if (buf) atoms.push(buf);
+
+  const lines = [];
+  let line = '';
+  for (const atom of atoms) {
+    if (line && line.length + 1 + atom.length > WRAP) { lines.push(line); line = atom; }
+    else line = line ? line + ' ' + atom : atom;
+  }
+  if (line) lines.push(line);
+  return lines.map(escStart).join('\n');
+}
+
 const BLOCK = new Set(['p', 'div', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol',
   'table', 'blockquote', 'pre', 'hr', 'li']);
 const hasBlockKids = n => [...n.children].some(c => BLOCK.has(c.tagName.toLowerCase()));
@@ -337,7 +377,7 @@ function blocksToMd(parent) {
   let out = '';
   for (const n of parent.childNodes) {
     if (n.nodeType === 3) {
-      if (n.textContent.trim()) out += escStart(escText(n.textContent.trim())) + '\n\n';
+      if (n.textContent.trim()) out += wrapParagraph(escText(n.textContent.trim())) + '\n\n';
       continue;
     }
     if (n.nodeType !== 1) continue;
@@ -358,7 +398,7 @@ function blocksToMd(parent) {
     if (tag === 'hr') { out += '---\n\n'; continue; }
     if (hasBlockKids(n)) { out += blocksToMd(n); continue; }
     const t = inlineToMd(n).trim();
-    out += (t ? escStart(t) : '') + '\n\n';
+    out += (t ? wrapParagraph(t) : '') + '\n\n';
   }
   return out;
 }

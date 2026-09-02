@@ -3,12 +3,14 @@ title: Architecture
 created: 01SEP2026
 modified: 02SEP2026
 font: JetBrains Mono
+view: "40,20,1"
 elements:
   - id: t1
     type: text
     x: 60
     y: 40
     w: 620
+    h: 412
 ---
 
 <!--@t1-->
@@ -21,8 +23,7 @@ The risk register lives here. No budget discussion on this page.
 - Rendering is vanilla ES modules, no build step
 - Fonts ship with the app: Roboto, JetBrains Mono, Calibri, Arial, Helvetica
 
-Merged cells and hidden rules are written as an HTML block, because a pipe
-table cannot express them:
+Merged cells and hidden rules are written as an HTML block, because a pipe table cannot express them:
 
 <table data-borders="off">
 <tr><th colspan="2">Storage</th></tr>

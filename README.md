@@ -36,7 +36,12 @@ notes/
 ```
 
 Folder colours live in `notes/.whiteboard.json` — the one piece of metadata
-that has nowhere natural to live inside a note.
+that has nowhere natural to live inside a note. Deleted notes go to
+`notes/.trash/`, and earlier versions to `notes/.history/`; both are hidden
+from the sidebar, from search and from git.
+
+The project is a git repository, so `git log` is the long-term history and
+`notes/.history/` is the ten-minute one.
 
 ## The file format
 
@@ -87,9 +92,21 @@ Splitting them keeps the prose — the part you actually care about in ten
 years — readable, greppable and portable, while the geometry stays out of the
 way in the header. Any note opened in a text editor still reads as a document.
 
-Element types: `text`, `box`, `line`, `ink`, `image`. Text colour and highlight
-are the one place inline HTML appears (`<span style="color:…">`), because
-Markdown has no syntax for them.
+Element types: `text`, `box`, `line`, `ink`, `image`. Boxes take a `shape` of
+`ellipse` or `sticky`. Text colour, highlight and size are the one place inline
+HTML appears (`<span style="color:…;font-size:20px">`), because Markdown has no
+syntax for them.
+
+Tables are GFM pipe tables while they can be. Merged cells and hidden rules have
+no pipe-table spelling, so such a table is written as a raw HTML block instead —
+still legal Markdown, and still readable:
+
+```html
+<table data-borders="off">
+<tr><th colspan="2">Storage</th></tr>
+<tr><td>prose</td><td>Markdown body</td></tr>
+</table>
+```
 
 The frontmatter deliberately uses a tiny YAML subset — scalars and a list of
 flat maps — so both the browser and `server.py` parse it without a library.
@@ -106,7 +123,9 @@ so on. Rename the note and its images are renamed with it.
 
 ## Search
 
-The sidebar search hides every note and folder that doesn't match. It takes
+The sidebar search hides every note and folder that doesn't match, and every
+match in the page you have open lights up as you type — including matches in
+text you are editing at that moment. It takes
 uppercase boolean operators, quoted phrases and parentheses; adjacent terms are
 an implicit AND.
 
@@ -117,6 +136,7 @@ scope storage                   risk NOT budget
 ```
 
 Lowercase `and` is just a word, so searching for `black and white` works.
+Terms behind a `NOT` are never highlighted.
 
 ## Linking
 
@@ -139,11 +159,32 @@ does. ⌘-click a link to open it.
 | ⌘0 / ⌘1 | Reset zoom / fit page to content |
 | ⌘⇧D | Toggle dark mode |
 | ⌘D | Duplicate selection · ⌫ delete |
+| ⌘\\ | Clear formatting from the selection |
+| ⇧⌘P | Print, or save as PDF |
 | V T P R L H | Select, text, draw, box, connector, pan |
 | Space-drag | Pan · ⌘-scroll to zoom · arrows nudge |
+| Tab | Next table cell, or indent inside a list |
 
 Typing `- ` starts a bullet, `1. ` a numbered list, `# ` `## ` `### ` a heading
 and `> ` a quote. Tab and ⇧Tab indent inside lists.
+
+## Tables
+
+Insert one with **▦**. If the caret is in a text box it lands there; if it
+isn't, it arrives in a new box of its own on the canvas.
+
+Right-click any cell to edit the table: insert or delete rows and columns,
+delete the table, merge a cell with the one to its right or below, split a
+merged cell back apart, hide or show the rules, and turn the header row on or
+off. Tab walks the cells, and tabbing past the last one adds a row.
+
+## Shapes and export
+
+The **▾** beside the box tool chooses rectangle, ellipse or sticky note.
+Connectors meet an ellipse on its curve rather than its bounding box.
+
+**⤓** exports the page as a PNG (2×, everything inlined so it renders anywhere),
+as an SVG, or through the print dialog — where macOS offers *Save as PDF*.
 
 ## Themes
 
@@ -177,10 +218,24 @@ Open <http://127.0.0.1:8420/test.html> after changing `format.js`.
 
 `window.wb` is exposed in the console (`wb.store.doc`, `wb.canvas.selected()`).
 
+## Version history
+
+Every ten minutes of editing, the previous contents of a note are kept in
+`notes/.history/`, up to thirty versions per note. Right-click a note in the
+sidebar and choose **Version history…** to see them and roll one back; the
+state you were in is always snapshotted first, so a restore is itself
+undoable.
+
 ## Known edges
 
 - Autosave writes ~0.7 s after you stop; ⌘S forces it.
 - If you edit a note on disk *and* in the app at the same time, the app warns
   and its version wins on save.
-- Undo history is per session and resets when you switch notes.
-- Font size is per text box, not per word — see the format note above.
+- Undo history is kept per note for the 24 most recent notes you have opened,
+  and is cleared when the app is reloaded.
+- Live search highlighting needs the CSS Custom Highlight API (Chrome 105+,
+  Safari 17.2+). Without it, search still filters the sidebar.
+- Below roughly a 1400px window the shape controls fold into the **◈** button;
+  narrower still and the toolbar wraps to two rows.
+- PNG export rasterises through an inlined SVG. If a page ever fails to
+  render, Export as SVG always works.
