@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Whiteboard - a local, file-backed notebook.
+Paperboard - a local, file-backed notebook.
 
 Zero dependencies: Python standard library only. Notes live as Markdown files
 under ./notes and the on-disk folder tree IS the notebook tree.
@@ -24,7 +24,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 APP = ROOT / "app"
 NOTES = ROOT / "notes"
-META_FILE = NOTES / ".whiteboard.json"
+META_FILE = NOTES / ".paperboard.json"
 HISTORY = NOTES / ".history"
 
 SNAPSHOT_EVERY = 10 * 60      # seconds between kept versions of a note
@@ -398,7 +398,7 @@ elements:
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "Whiteboard"
+    server_version = "Paperboard"
 
     def log_message(self, fmt, *args):
         if not self.path.startswith(("/api/changes", "/app/", "/notes/")):
@@ -612,7 +612,7 @@ def main():
     NOTES.mkdir(parents=True, exist_ok=True)
     url = f"http://{args.host}:{args.port}/"
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"Whiteboard  ->  {url}\n  notes: {NOTES}\n  ctrl-c to stop\n")
+    print(f"Paperboard  ->  {url}\n  notes: {NOTES}\n  ctrl-c to stop\n")
     if not args.no_open:
         webbrowser.open(url)
     try:

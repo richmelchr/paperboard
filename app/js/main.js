@@ -36,7 +36,7 @@ function paintHeader() {
   $('#meta-created').textContent = 'created ' + m.created;
   $('#meta-modified').textContent = 'edited ' + m.modified;
   $('#meta-path').textContent = store.path || '';
-  document.title = (m.title || 'Whiteboard') + ' — Whiteboard';
+  document.title = (m.title || 'Paperboard') + ' — Paperboard';
 
   const back = backlinks[store.path] || [];
   const host = $('#backlinks');

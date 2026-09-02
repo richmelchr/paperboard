@@ -1,4 +1,4 @@
-# Whiteboard
+# Paperboard
 
 A local, file-backed notebook that runs in your browser. OneNote's shape —
 coloured section folders, free-form pages, an infinite canvas — but every page
@@ -8,8 +8,8 @@ No database, no build step, no dependencies. Python's standard library serves
 it; the browser does the rest.
 
 ```sh
-./whiteboard              # http://127.0.0.1:8420, opens your browser
-./whiteboard --port 9000  # or --host, --no-open
+./paperboard              # http://127.0.0.1:8420, opens your browser
+./paperboard --port 9000  # or --host, --no-open
 ```
 
 ---
@@ -35,7 +35,7 @@ notes/
     └── Keyboard shortcuts.md
 ```
 
-Folder colours live in `notes/.whiteboard.json` — the one piece of metadata
+Folder colours live in `notes/.paperboard.json` — the one piece of metadata
 that has nowhere natural to live inside a note. Deleted notes go to
 `notes/.trash/`, and earlier versions to `notes/.history/`; both are hidden
 from the sidebar, from search and from git.
