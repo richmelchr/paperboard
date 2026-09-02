@@ -1,0 +1,150 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>format round-trip</title>
+<style>body{font:13px/1.5 ui-monospace,monospace;padding:20px;background:#111;color:#ddd}
+.ok{color:#7ec87e}.bad{color:#ff7b6b}pre{white-space:pre-wrap;margin:2px 0 10px 18px;color:#9aa}
+h2{font-size:14px;margin:18px 0 6px}</style></head><body>
+<h1 id="head">running…</h1><div id="out"></div>
+<script type="module">
+import { htmlToMd, mdToHtml, parseNote, serializeNote, inlineToHtml } from './js/format.js';
+
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+
+const norm = h => {
+  if (typeof h !== 'string') return String(h);
+  const d = document.createElement('div'); d.innerHTML = h;
+  return d.innerHTML.replace(/\s+/g, ' ').trim();
+};
+
+function t(name, got, want) {
+  const ok = norm(got) === norm(want);
+  ok ? pass++ : fail++;
+  out.insertAdjacentHTML('beforeend',
+    `<div class="${ok ? 'ok' : 'bad'}">${ok ? '✓' : '✗'} ${name}</div>` +
+    (ok ? '' : `<pre>got : ${norm(got).replace(/[<&]/g, c => c === '<' ? '&lt;' : '&amp;')}
+want: ${norm(want).replace(/[<&]/g, c => c === '<' ? '&lt;' : '&amp;')}</pre>`));
+}
+
+/** html -> md -> html must land back on the same html */
+function trip(name, html) { t(name, mdToHtml(htmlToMd(html)), html); }
+
+out.insertAdjacentHTML('beforeend', '<h2>HTML → Markdown → HTML</h2>');
+trip('paragraph',        '<p>Hello world</p>');
+trip('bold/italic',      '<p><strong>bold</strong> and <em>italic</em> text</p>');
+trip('underline',        '<p><u>underlined</u></p>');
+trip('strike',           '<p><s>gone</s></p>');
+trip('heading',          '<h1>Agenda</h1>');
+trip('h2 + para',        '<h2>Notes</h2><p>body</p>');
+trip('bullets',          '<ul><li>one</li><li>two</li></ul>');
+trip('numbers',          '<ol><li>first</li><li>second</li></ol>');
+trip('nested bullets',   '<ul><li>a<ul><li>b</li></ul></li><li>c</li></ul>');
+trip('link',             '<p>see <a href="https://x.dev/a_b">the docs</a></p>');
+trip('wiki link',        '<p>see <a class="wiki" data-note="Other Note" href="#">Other Note</a></p>');
+trip('text colour',      '<p><span style="color:#d8574b">red</span> normal</p>');
+trip('highlight',        '<p><span style="background:#ffe479">lit</span></p>');
+trip('inline code',      '<p>run <code>ls -la</code> now</p>');
+trip('blockquote',       '<blockquote><p>quoted</p></blockquote>');
+trip('table',            '<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>');
+trip('mixed',            '<h1>T</h1><p>intro <strong>x</strong></p><ul><li>bullet</li></ul>');
+trip('empty',            '<p><br></p>');
+trip('line break',       '<p>one<br>two</p>');
+
+out.insertAdjacentHTML('beforeend', '<h2>Characters that must survive</h2>');
+t('asterisks kept',  mdToHtml(htmlToMd('<p>2 * 3 * 4</p>')), '<p>2 * 3 * 4</p>');
+t('underscores',     mdToHtml(htmlToMd('<p>snake_case_name</p>')), '<p>snake_case_name</p>');
+t('brackets',        mdToHtml(htmlToMd('<p>array[0] and [text]</p>')), '<p>array[0] and [text]</p>');
+t('angle + amp',     mdToHtml(htmlToMd('<p>a &lt; b &amp;&amp; c &gt; d</p>')), '<p>a &lt; b &amp;&amp; c &gt; d</p>');
+t('backtick',        mdToHtml(htmlToMd('<p>a ` b</p>')), '<p>a ` b</p>');
+t('hash mid-line',   mdToHtml(htmlToMd('<p>issue #42 filed</p>')), '<p>issue #42 filed</p>');
+t('dash start',      mdToHtml(htmlToMd('<p>- not a bullet</p>')), '<p>- not a bullet</p>');
+t('pipe in table',   mdToHtml(htmlToMd('<table><tbody><tr><td>a|b</td></tr></tbody></table>')),
+                     '<table><thead><tr><th>a|b</th></tr></thead><tbody></tbody></table>');
+
+out.insertAdjacentHTML('beforeend', '<h2>Markdown → HTML</h2>');
+t('md bullets',   mdToHtml('- one\n- two'), '<ul><li>one</li><li>two</li></ul>');
+t('md nested',    mdToHtml('- a\n  - b'),   '<ul><li>a<ul><li>b</li></ul></li></ul>');
+t('md heading',   mdToHtml('## Two'),        '<h2>Two</h2>');
+t('md bold',      mdToHtml('a **b** c'),     '<p>a <strong>b</strong> c</p>');
+t('md escaped *', mdToHtml('a \\*b\\* c'),   '<p>a *b* c</p>');
+t('md table',     mdToHtml('| a | b |\n| --- | --- |\n| 1 | 2 |'),
+   '<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>');
+
+out.insertAdjacentHTML('beforeend', '<h2>Font size and complex tables</h2>');
+trip('font size span',  '<p>a <span style="font-size:24px">big</span> word</p>');
+trip('size + colour',   '<p><span style="color:#4a7fd4;font-size:20px">both</span></p>');
+t('size survives file',
+  (() => { const d = { meta: { title: 'S', created: '01JAN2026', modified: '01JAN2026',
+                               font: 'Roboto', view: null },
+                       elements: [{ id: 't1', type: 'text', x: 0, y: 0, w: 300,
+                                    html: '<p><span style="font-size:32px">huge</span></p>' }] };
+           return parseNote(serializeNote(d)).elements[0].html; })(),
+  '<p><span style="font-size:32px">huge</span></p>');
+
+// merged cells and hidden rules have no pipe-table spelling -> raw HTML block
+const merged = '<table><tr><th colspan="2">Span</th></tr><tr><td>1</td><td>2</td></tr></table>';
+t('merged -> html block', htmlToMd(merged).startsWith('<table>'), true);
+trip('merged round trip', merged);
+const borderless = '<table data-borders="off"><tr><td>a</td><td>b</td></tr></table>';
+t('borderless -> html block', htmlToMd(borderless).includes('data-borders'), true);
+trip('borderless round trip', borderless);
+const rowspan = '<table><tr><td rowspan="2">tall</td><td>x</td></tr><tr><td>y</td></tr></table>';
+trip('rowspan round trip', rowspan);
+t('plain table stays pipes',
+  htmlToMd('<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>')
+    .startsWith('|'), true);
+t('html table amid text',
+  mdToHtml('before\n\n' + merged + '\n\nafter').includes('colspan="2"'), true);
+
+t('empty cells stay empty',
+  htmlToMd('<table><tr><th><br></th><th>x</th></tr><tr><td><br></td><td><br></td></tr></table>'),
+  '|   | x |\n| --- | --- |\n|   |   |');
+trip('empty table round trip',
+  '<table><thead><tr><th><br></th><th><br></th></tr></thead><tbody><tr><td><br></td><td><br></td></tr></tbody></table>');
+t('break inside a cell',
+  htmlToMd('<table><tr><td>a<br>b</td></tr></table>').includes('a<br>b'), true);
+
+out.insertAdjacentHTML('beforeend', '<h2>Line wrapping</h2>');
+t('soft wrap flows',   mdToHtml('line one\nline two'), '<p>line one line two</p>');
+t('hard break kept',   mdToHtml('one\\\ntwo'), '<p>one<br>two</p>');
+t('two-space break',   mdToHtml('one  \ntwo'), '<p>one<br>two</p>');
+t('blank line splits', mdToHtml('one\n\ntwo'), '<p>one</p><p>two</p>');
+trip('long paragraph', '<p>' + 'word '.repeat(30).trim() + '</p>');
+trip('break then text', '<p>alpha<br>beta gamma</p>');
+
+out.insertAdjacentHTML('beforeend', '<h2>Whole-file round trip</h2>');
+const doc = {
+  meta: { title: 'Kick: off', created: '01JAN2026', modified: '02JAN2026',
+          font: 'JetBrains Mono', view: { x: -10.5, y: 20, scale: 1.25 } },
+  elements: [
+    { id: 't1', type: 'text', x: 40, y: 40, w: 620, h: 88, html: '<h1>Agenda</h1><ul><li>Scope</li></ul>' },
+    { id: 'b1', type: 'box', x: 700, y: 40, w: 200, h: 120, fill: 'none',
+      stroke: '#c0392b', strokeWidth: 3, radius: 6, html: '<p>Risk</p>' },
+    { id: 'b2', type: 'box', x: 700, y: 260, w: 200, h: 120, fill: '#ffe479',
+      stroke: '#c0392b', strokeWidth: 2, radius: 6, html: '<p><br></p>' },
+    { id: 'l1', type: 'line', from: 'b1', to: 'b2', stroke: '#4a7fd4', strokeWidth: 2,
+      arrowStart: false, arrowEnd: true },
+    { id: 'k1', type: 'ink', x: 10, y: 300, w: 120, h: 60, bw: 120, bh: 60,
+      stroke: '#5aa552', strokeWidth: 3, d: 'M0 0 Q10 10 20 20 L40 30' },
+    { id: 'i1', type: 'image', x: 300, y: 400, w: 320, h: 200, src: 'images/Kickoff1.png' },
+  ],
+};
+const text = serializeNote(doc);
+out.insertAdjacentHTML('beforeend',
+  `<pre style="color:#8ab">${text.replace(/[<&]/g, c => c === '<' ? '&lt;' : '&amp;')}</pre>`);
+const back = parseNote(text);
+t('meta survives', JSON.stringify(back.meta), JSON.stringify(doc.meta));
+for (const want of doc.elements) {
+  const got = back.elements.find(e => e.id === want.id) || {};
+  const keys = Object.keys(want).filter(k => k !== 'html' && want[k] !== undefined &&
+                                             want[k] !== '' && want[k] !== false);
+  t('element ' + want.id,
+    JSON.stringify(Object.fromEntries(keys.map(k => [k, got[k]]))),
+    JSON.stringify(Object.fromEntries(keys.map(k => [k, want[k]]))));
+  if (want.html) t('  html of ' + want.id, got.html, want.html);
+}
+t('second trip is stable', serializeNote(back), text);
+
+document.getElementById('head').textContent = `${pass} passed, ${fail} failed`;
+document.getElementById('head').className = fail ? 'bad' : 'ok';
+document.title = fail ? `FAIL ${fail}` : `PASS ${pass}`;
+</script></body></html>

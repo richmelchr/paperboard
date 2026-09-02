@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en" data-theme="paper">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whiteboard</title>
+<link rel="stylesheet" href="css/fonts.css">
+<link rel="stylesheet" href="css/theme.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ─────────────── sidebar ─────────────── -->
+  <aside id="sidebar">
+    <div class="side-head">
+      <div class="brand">Whiteboard</div>
+      <div class="side-actions">
+        <button class="icon" id="new-note" title="New note (⌘N)">＋</button>
+        <button class="icon" id="new-folder" title="New folder (⇧⌘N)">🗀</button>
+      </div>
+    </div>
+
+    <div class="search-wrap">
+      <input id="search" type="search" spellcheck="false" autocomplete="off"
+             placeholder="Search &nbsp;·&nbsp; AND OR NOT">
+      <button class="icon clear" id="search-clear" title="Clear" hidden>✕</button>
+    </div>
+    <div id="search-status" class="search-status" hidden></div>
+
+    <nav id="tree" class="tree"></nav>
+
+    <div class="side-foot">
+      <button class="icon" id="theme-toggle" title="Toggle dark mode (⌘⇧D)">◐</button>
+      <span class="grow"></span>
+      <span id="save-state" class="save-state">saved</span>
+    </div>
+  </aside>
+
+  <div id="splitter" title="Drag to resize"></div>
+
+  <!-- ─────────────── editor ─────────────── -->
+  <main id="editor">
+    <header id="note-head">
+      <div class="title-row">
+        <div id="note-title" class="note-title" contenteditable="plaintext-only"
+             spellcheck="false" data-placeholder="Untitled"></div>
+      </div>
+      <div class="meta-row">
+        <span class="meta" id="meta-created"></span>
+        <span class="dot">·</span>
+        <span class="meta" id="meta-modified"></span>
+        <span class="dot">·</span>
+        <span class="meta" id="meta-path"></span>
+        <span class="grow"></span>
+        <span class="meta" id="backlinks"></span>
+      </div>
+    </header>
+
+    <div id="toolbar" class="toolbar">
+      <div class="tgroup" role="radiogroup" aria-label="Tools">
+        <button class="tool" data-tool="select" title="Select  (V)">⌖</button>
+        <button class="tool" data-tool="text"   title="Text box  (T)">T</button>
+        <button class="tool" data-tool="pen"    title="Draw  (P)">✎</button>
+        <button class="tool" data-tool="box"    title="Box  (R)">▢</button>
+        <button class="caret" id="box-kind" title="Choose shape">▾</button>
+        <button class="tool" data-tool="line"   title="Connector line  (L)">╱</button>
+        <button class="tool" data-tool="pan"    title="Pan  (H / hold space)">✋</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="tgroup">
+        <select id="font-select" title="Font">
+          <option value="Roboto">Roboto</option>
+          <option value="JetBrains Mono">JetBrains Mono</option>
+          <option value="Calibri">Calibri</option>
+          <option value="Arial">Arial</option>
+          <option value="Helvetica">Helvetica</option>
+        </select>
+        <select id="size-select" title="Text size">
+          <option>10</option><option>12</option><option>14</option>
+          <option selected>16</option><option>18</option><option>20</option>
+          <option>24</option><option>32</option><option>48</option>
+        </select>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="tgroup">
+        <button class="fmt" data-cmd="bold" title="Bold  (⌘B)"><b>B</b></button>
+        <button class="fmt" data-cmd="italic" title="Italic  (⌘I)"><i>I</i></button>
+        <button class="fmt" data-cmd="underline" title="Underline  (⌘U)"><u>U</u></button>
+        <button class="fmt" data-cmd="strikeThrough" title="Strikethrough">S̶</button>
+        <button class="fmt" id="btn-clear-fmt" title="Clear formatting  (⌘\)">T̸</button>
+      </div>
+
+      <div class="tgroup">
+        <button class="swatch-btn" id="text-color" title="Text colour">
+          A<span class="bar" style="background:#d8574b"></span></button>
+        <button class="swatch-btn" id="hilite-color" title="Highlight">
+          ▮<span class="bar" style="background:#ffe479"></span></button>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="tgroup">
+        <button class="fmt" data-cmd="insertUnorderedList" title="Bulleted list">•≡</button>
+        <button class="fmt" data-cmd="insertOrderedList" title="Numbered list">1≡</button>
+        <button class="fmt" data-cmd="outdent" title="Outdent  (⇧Tab)">⇤</button>
+        <button class="fmt" data-cmd="indent" title="Indent  (Tab)">⇥</button>
+        <button class="fmt" id="btn-link" title="Link  (⌘K)">🔗</button>
+        <button class="fmt" id="btn-table" title="Insert table">▦</button>
+      </div>
+
+      <div class="sep"></div>
+
+      <button class="fmt" id="shape-menu" title="Shape style" hidden>◈</button>
+      <div class="tgroup shape-tools" id="shape-tools">
+        <button class="swatch-btn" id="stroke-color" title="Line / border colour">
+          ╱<span class="bar" style="background:#4a7fd4"></span></button>
+        <button class="swatch-btn" id="fill-color" title="Fill colour">
+          ▩<span class="bar bar-none" style="background:transparent"></span></button>
+        <select id="stroke-width" title="Line thickness">
+          <option value="1">1 px</option><option value="2" selected>2 px</option>
+          <option value="3">3 px</option><option value="4">4 px</option>
+          <option value="6">6 px</option><option value="8">8 px</option>
+        </select>
+        <button class="fmt" id="arrow-start" title="Arrow at start">◀</button>
+        <button class="fmt" id="arrow-end" title="Arrow at end">▶</button>
+      </div>
+
+      <span class="grow"></span>
+
+      <div class="tgroup">
+        <button class="fmt" id="btn-export" title="Export this page">⤓</button>
+      </div>
+      <div class="tgroup">
+        <button class="fmt" id="btn-undo" title="Undo  (⌘Z)">↶</button>
+        <button class="fmt" id="btn-redo" title="Redo  (⇧⌘Z)">↷</button>
+      </div>
+      <div class="tgroup zoomer">
+        <button class="fmt" id="zoom-out" title="Zoom out">−</button>
+        <button class="fmt zoom-label" id="zoom-reset" title="Reset zoom (⌘0)">100%</button>
+        <button class="fmt" id="zoom-in" title="Zoom in">＋</button>
+        <button class="fmt" id="zoom-fit" title="Fit to content (⌘1)">⤢</button>
+      </div>
+    </div>
+
+    <div id="stage" class="stage">
+      <div id="world" class="world">
+        <svg id="vector" class="vector"></svg>
+      </div>
+      <div id="overlay" class="overlay"></div>
+      <div id="empty-hint" class="empty-hint" hidden>
+        <p>Double-click anywhere to start typing.</p>
+        <p class="dim">Paste an image · drag with space held · ⌘K for commands</p>
+      </div>
+      <canvas id="minimap" class="minimap" width="320" height="200" title="Minimap"></canvas>
+    </div>
+  </main>
+</div>
+
+<!-- popovers -->
+<div id="color-pop" class="pop" hidden>
+  <div class="swatches"></div>
+  <label class="custom">Custom <input type="color" id="color-custom"></label>
+  <button class="none-btn" id="color-none">No colour</button>
+</div>
+
+<div id="shape-pop" class="pop" hidden></div>
+
+<div id="table-pop" class="pop table-pop" hidden>
+  <div class="grid-pick" id="grid-pick"></div>
+  <div class="grid-label" id="grid-label">1 × 1</div>
+</div>
+
+<div id="ctx" class="ctx" hidden></div>
+
+<div id="palette" class="palette" hidden>
+  <input id="palette-input" placeholder="Jump to a note, or type a command…" spellcheck="false">
+  <ul id="palette-list"></ul>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

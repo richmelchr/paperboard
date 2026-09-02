@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Deleted notes and version snapshots are local safety nets, not history worth
+# committing — git is already doing that job once a note is tracked.
+notes/.trash/
+notes/.history/
