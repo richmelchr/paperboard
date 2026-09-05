@@ -42,6 +42,8 @@ trip('link',             '<p>see <a href="https://x.dev/a_b">the docs</a></p>');
 trip('wiki link',        '<p>see <a class="wiki" data-note="Other Note" href="#">Other Note</a></p>');
 trip('text colour',      '<p><span style="color:#d8574b">red</span> normal</p>');
 trip('highlight',        '<p><span style="background:#ffe479">lit</span></p>');
+trip('selected font',    '<p>before <span style="font-family:Arial, Helvetica, sans-serif">selected</span> after</p>');
+trip('quoted font',      '<p><span style="font-family:\'JetBrains Mono\', monospace">selected</span> unchanged</p>');
 trip('inline code',      '<p>run <code>ls -la</code> now</p>');
 trip('code block',       '<pre>const x = 1;\nconst y = 2;</pre>');
 trip('blockquote',       '<blockquote><p>quoted</p></blockquote>');

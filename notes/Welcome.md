@@ -1,9 +1,9 @@
 ---
 title: Welcome
 created: 01SEP2026
-modified: 04SEP2026
+modified: 05SEP2026
 font: Roboto
-view: "42.17,247.68,1"
+view: "18.21,164.46,0.89"
 elements:
   - id: t1
     type: text
@@ -69,12 +69,6 @@ elements:
     y: 631.86
     w: 544
     h: 192
-  - id: ty1gwnk
-    type: text
-    x: -432.28
-    y: -318.97
-    w: 340
-    h: 54
   - id: be9m6wg
     type: box
     shape: sticky
@@ -111,14 +105,13 @@ database.
 
 - **Double-click** anywhere on the canvas to start a new text box
 - Hold **space** and drag to pan, or **⌘-scroll** to zoom
-- **⌘K** opens the command palette, **⌘F** jumps to search
+- **⌘K** <span style="font-family:'JetBrains Mono', ui-monospace, SFMono-Regular, monospace">opens the command palette</span>, **⌘F** jumps to search
 - Tool keys: **V** select · **T** text · **P** draw · **R** box · **L** connector
 
 ## Formatting
 
 Typing `- ` starts a bullet, `1. ` a numbered list, `## ` a heading and `> ` a
-quote. Text can be <span style="color:#b8443a">coloured</span>,
-<span style="background:#ffe479">highlighted</span> or
+quote. Text can be <span style="color:#b8443a">coloured</span>, highlighted or
 <span style="font-size:22px">resized</span>, and paste is plain by default —
 right-click for **Paste with formatting**.
 
@@ -139,15 +132,12 @@ See also [[Kickoff]] and [[Keyboard shortcuts]].
 Sticky notes and ellipses come from the shape menu.
 
 <!--@t9fv73e-->
-|   |   |   |   |
-| --- | --- | --- | --- |
-|   |   |   |   |
-|   |   |   |   |
-|   |   |   |   |
+<table style="table-layout: fixed; width: 192px; min-width: 192px;">
+<colgroup><col style="width: 48px;"><col style="width: 48px;"><col style="width: 48px;"><col style="width: 48px;"></colgroup>
+<thead><tr><th><br></th><th><br></th><th><br></th><th><br></th></tr></thead>
+<tbody><tr><td><br></td><td><br></td><td><br></td><td><br></td></tr><tr><td><br></td><td><br></td><td><br></td><td><br></td></tr><tr><td><br></td><td><br></td><td><br></td><td><br></td></tr></tbody>
+</table>
 
-\
-
-<!--@ty1gwnk-->
 \
 
 <!--@be9m6wg-->

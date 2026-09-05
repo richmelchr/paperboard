@@ -1,9 +1,9 @@
 ---
 title: Architecture
 created: 01SEP2026
-modified: 03SEP2026
+modified: 05SEP2026
 font: JetBrains Mono
-view: "40,20,1"
+view: "40,199.68,1"
 elements:
   - id: t1
     type: text
@@ -27,7 +27,5 @@ Merged cells and hidden rules are written as an HTML block, because a pipe table
 cannot express them: inffsn fsfd
 
 <table data-borders="off">
-<tr><th colspan="2">Storage</th></tr>
-<tr><td>prose</td><td>Markdown body</td></tr>
-<tr><td>geometry</td><td>YAML frontmatter</td></tr>
+<tbody><tr><th colspan="2">Storage</th></tr><tr><td>prose</td><td>Markdown body</td></tr><tr><td>geometry</td><td>YAML frontmatter</td></tr></tbody>
 </table>

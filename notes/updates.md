@@ -1,16 +1,16 @@
 ---
 title: updates
 created: 03SEP2026
-modified: 04SEP2026
+modified: 05SEP2026
 font: Roboto
-view: "129.12,368.4,1"
+view: "186.37,30.1,1"
 elements:
   - id: release_review
     type: text
     x: -110.69
     y: -349.66
     w: 920
-    h: 9507
+    h: 15378
 ---
 
 <!--@release_review-->
@@ -324,8 +324,7 @@ subfolder are outside what move\_images() considers, as before.
 ## 5. P1 — Merged-table operations corrupt spans or delete text
 
 Status: \[x\] Fixed 04SEP2026. Both examples reproduced through the real
-M\_table helpers, then fixed and re-verified through the app's own context
-menu.
+M\_table helpers, then fixed and re-verified through the app's own context menu.
 
 Locations: app/js/app.js M\_table.insertRow() around 735, insertColumn(), and
 deleteColumn() around 805.
@@ -423,22 +422,22 @@ adopted() helpers, a rewritten splitBlocks(), and parseNote()/serializeNote().
 
 parseNote() no longer assumes that recognized frontmatter means Paper wrote the
 file. splitBlocks() now returns the body's chunks in file order, with a null id
-for text that arrives before the first marker, and parseNote() records which
-ids a text or box element actually claimed. Whatever is left over — the whole
-body of an imported file, prose above the first marker, or the block of an
-element definition that was dropped for being malformed — is adopted: it
-becomes the sole text element when no element survived, or an extra text
-element parked below the others when some did. Nothing that had content on disk
-is written back blank.
+for text that arrives before the first marker, and parseNote() records which ids
+a text or box element actually claimed. Whatever is left over — the whole body
+of an imported file, prose above the first marker, or the block of an element
+definition that was dropped for being malformed — is adopted: it becomes the
+sole text element when no element survived, or an extra text element parked
+below the others when some did. Nothing that had content on disk is written back
+blank.
 
 Policy for unfamiliar frontmatter: Paper owns title, created, modified, font,
 view and elements. Every other top-level key is left uninterpreted but kept
 verbatim — parseNote() carries its raw source lines on meta.extra and
 serializeNote() writes them back, in their original order, between the fields
-Paper owns and elements:. So a tags: list or an aliases: block from another
-tool survives editing and saving here, and Paper never has to guess what a
-field it does not understand was supposed to mean. This is documented under
-"Imported files" in README.md.
+Paper owns and elements:. So a tags: list or an aliases: block from another tool
+survives editing and saving here, and Paper never has to guess what a field it
+does not understand was supposed to mean. This is documented under "Imported
+files" in README.md.
 
 Verified 04SEP2026:
 
@@ -448,9 +447,9 @@ Verified 04SEP2026:
 
 Limitations: the suite's one failure is the pipe-prose worker test from item 3,
 which times out under headless Chrome's virtual clock because the worker is not
-advanced with the page. Running those same inputs through mdToHtml() on the
-main thread in the same headless browser returns immediately, so item 3 stands;
-the test passes in a real browser. Unfamiliar frontmatter is preserved but not
+advanced with the page. Running those same inputs through mdToHtml() on the main
+thread in the same headless browser returns immediately, so item 3 stands; the
+test passes in a real browser. Unfamiliar frontmatter is preserved but not
 editable in the app, and a foreign key written between Paper's own fields is
 re-emitted after them rather than exactly where it stood. Item 7's history and
 image work is untouched here.
@@ -518,27 +517,33 @@ carries nothing.
 
 Verified 04SEP2026:
 
-- Six backend regressions added to test_server.py, which now reports Ran 13
-  tests, OK: a version and an action step saved before a rename both point at
-  the moved image and carry the new title; a move whose destination already
-  holds that filename ends up on the free name it actually took; repeated
-  renames stay in step; rewriting versions does not reorder the History page
-  (their mtimes are deliberately set out of step with their filenames first);
-  and a folder rename leaves its notes' history alone. Against the pre-fix
-  server.py five of the six fail and the folder control passes.
+- Six backend regressions added to test\_server.py, which now reports Ran 13
+
+tests, OK: a version and an action step saved before a rename both point at the
+moved image and carry the new title; a move whose destination already holds that
+filename ends up on the free name it actually took; repeated renames stay in
+step; rewriting versions does not reorder the History page (their mtimes are
+deliberately set out of step with their filenames first); and a folder rename
+leaves its notes' history alone. Against the pre-fix server.py five of the six
+fail and the folder control passes.
+
 - Five checks added to app/test.html's store section, which reports 161 passed,
-  1 failed in headless Chrome — the failure is the known worker-under-virtual-
-  clock timeout from item 4, unrelated and present before this change. Against
-  the pre-fix app.js four of the five new checks fail; the fifth (prose naming a
-  path is left alone) passes either way, as it should.
+
+1 failed in headless Chrome — the failure is the known worker-under-virtual-
+clock timeout from item 4, unrelated and present before this change. Against the
+pre-fix app.js four of the five new checks fail; the fifth (prose naming a path
+is left alone) passes either way, as it should.
+
 - A copy of the real notebook, served on port 18420: updates.md has 22 kept
-  versions, five of which reference images/updates1.png although the current
-  note does not. Renaming it to `release notes.md` left the version order
-  unchanged, retitled every version, and left those five pointing at
-  images/updates1.png — which is right, because an image the note no longer
-  references is not moved. /api/image-path resolves it, restoring one of those
-  versions brings the picture back, and the tree still lists and opens the rest
-  of the notebook. That server was stopped and the copy deleted.
+
+versions, five of which reference images/updates1.png although the current note
+does not. Renaming it to `release notes.md` left the version order unchanged,
+retitled every version, and left those five pointing at images/updates1.png —
+which is right, because an image the note no longer references is not moved.
+/api/image-path resolves it, restoring one of those versions brings the picture
+back, and the tree still lists and opens the rest of the notebook. That server
+was stopped and the copy deleted.
+
 - python3 -m py\_compile server.py and git diff --check pass.
 
 Limitations: history is migrated with the renames the current note produced, so
@@ -603,16 +608,21 @@ when its path happens to match again.
 Verified 04SEP2026:
 
 - Fifteen deterministic regressions added to app/test.html under "Navigation
-  ordering", with api.read promises resolved and rejected in controlled order.
-  They cover reversed A/B completion, a stale error after a newer success, a
-  watcher response after navigating away, document/save metadata/localStorage
-  consistency, delayed action logs, and an edit typed while the destination was
-  loading. The full suite in Chrome reports 185 passed, 0 failed.
+
+ordering", with api.read promises resolved and rejected in controlled order.
+They cover reversed A/B completion, a stale error after a newer success, a
+watcher response after navigating away, document/save metadata/localStorage
+consistency, delayed action logs, and an edit typed while the destination was
+loading. The full suite in Chrome reports 185 passed, 0 failed.
+
 - The existing dirty-note switch test still proves work pending before a click
-  reaches disk, while the new mid-read test proves work typed after the click
-  reaches disk before the requested page replaces it.
+
+reaches disk, while the new mid-read test proves work typed after the click
+reaches disk before the requested page replaces it.
+
 - python3 test\_server.py reports Ran 13 tests, OK; python3 -m py\_compile
-  server.py and git diff --check pass. No backend behavior changed for this item.
+
+server.py and git diff --check pass. No backend behavior changed for this item.
 
 Limitation: superseded network reads are not aborted; they are allowed to finish
 and their results are discarded. This avoids coupling the store to a particular
@@ -621,8 +631,8 @@ saves.
 
 ## 9. P2 — Headerless tables regain a header after reopening
 
-Status: \[x\] Fixed 04SEP2026. Reproduced through
-HTML-to-Markdown-to-HTML conversion, then fixed and re-verified.
+Status: \[x\] Fixed 04SEP2026. Reproduced through HTML-to-Markdown-to-HTML
+conversion, then fixed and re-verified.
 
 Locations: app/js/app.js M\_format.isComplexTable() around 566 and tableToMd()
 around 609.
@@ -658,16 +668,20 @@ table states that require raw HTML.
 Verified 04SEP2026:
 
 - Six assertions were added to app/test.html and the old lossy expectation for
-  a literal pipe inside a headerless cell was corrected. Together they cover
-  raw-HTML selection, a two-row headerless round trip with bold and italic cell
-  content, whole-note serialization, the real Header toggle remaining off
-  after that file trip, and a compatible header table remaining a pipe table
-  and round-tripping.
+
+a literal pipe inside a headerless cell was corrected. Together they cover
+raw-HTML selection, a two-row headerless round trip with bold and italic cell
+content, whole-note serialization, the real Header toggle remaining off after
+that file trip, and a compatible header table remaining a pipe table and
+round-tripping.
+
 - The complete Chrome suite reports 191 passed, 0 failed, with no console
-  warnings or errors.
+
+warnings or errors.
+
 - python3 test\_server.py reports Ran 13 tests, OK; python3 -m py\_compile
-  server.py and git diff --check pass. No backend behavior changed for this
-  item.
+
+server.py and git diff --check pass. No backend behavior changed for this item.
 
 Limitation: headerless tables are deliberately more verbose on disk than simple
 header tables because standard pipe-table syntax has no header-off form. They
@@ -711,20 +725,25 @@ can interrupt prose without its opening marker being swallowed.
 The writer now chooses a backtick fence longer than every backtick run in the
 code. It no longer drops a trailing newline from `pre`, and its Markdown cleanup
 skips fenced bodies, so indentation, trailing spaces and repeated blank lines
-are not normalized away. The closing delimiter's required newline remains
-syntax rather than becoming code; an intentional final newline is represented
-by a blank code line before it.
+are not normalized away. The closing delimiter's required newline remains syntax
+rather than becoming code; an intentional final newline is represented by a
+blank code line before it.
 
 Verified 04SEP2026:
 
 - Eleven assertions were added to app/test.html for multiline code, indentation,
-  blank lines, trailing spaces, literal HTML, Markdown-looking text, embedded
-  triple backticks, tilde fences, language metadata and whole-note persistence.
+
+blank lines, trailing spaces, literal HTML, Markdown-looking text, embedded
+triple backticks, tilde fences, language metadata and whole-note persistence.
+
 - The complete Chrome suite reports 202 passed, 0 failed (was 191), with no
-  console warnings or errors.
+
+console warnings or errors.
+
 - python3 test\_server.py reports Ran 13 tests, OK; python3 -m py\_compile
-  server.py test\_server.py and git diff --check pass. No backend behavior
-  changed for this item.
+
+server.py test\_server.py and git diff --check pass. No backend behavior changed
+for this item.
 
 Limitation: Paper preserves one simple language token made of letters, digits,
 underscore, plus, dot or hyphen. More elaborate Markdown fence info strings are
@@ -759,16 +778,16 @@ Acceptance checks:
 - Temporary files do not appear in navigation or accumulate after failures.
 - Do not claim atomic replacement alone fixes concurrent update ordering.
 
-Implemented 04SEP2026 in server.py: `atomic_replace()`,
-`atomic_write_bytes()`, `atomic_write_text()`, `atomic_copyfile()`,
-`update_meta()` and the persistent mutation routes.
+Implemented 04SEP2026 in server.py: `atomic_replace()`, `atomic_write_bytes()`,
+`atomic_write_text()`, `atomic_copyfile()`, `update_meta()` and the persistent
+mutation routes.
 
 Every file-content write now goes to a hidden temporary sibling first. Paper
 flushes and fsyncs that complete file, calls `os.replace()` only after the write
 succeeds, and best-effort fsyncs the parent directory. The old destination is
 therefore untouched if writing or replacement fails, and the `finally` cleanup
-removes the temporary file. Existing destination permissions are retained.
-This path covers notes, created note templates, metadata, action logs, version
+removes the temporary file. Existing destination permissions are retained. This
+path covers notes, created note templates, metadata, action logs, version
 snapshots, restore copies, note/history rewrites after rename, image uploads and
 copied shared images.
 
@@ -780,19 +799,24 @@ sidecar and erase the other field.
 
 Verified 04SEP2026:
 
-- Three backend regressions were added to test_server.py. A simulated
-  `os.replace()` failure on the real `/api/note` endpoint returns 500 while the
-  prior note remains byte-for-byte current and its hidden temporary sibling is
-  removed. A held replacement exposes the complete old file until the instant
-  the complete new one lands, with the temporary sibling absent from
-  `build_tree()`. A controlled pair of metadata updates proves the second
-  mutator cannot enter until the first has saved; both fields remain afterward.
+- Three backend regressions were added to test\_server.py. A simulated
+
+`os.replace()` failure on the real `/api/note` endpoint returns 500 while the
+prior note remains byte-for-byte current and its hidden temporary sibling is
+removed. A held replacement exposes the complete old file until the instant the
+complete new one lands, with the temporary sibling absent from `build_tree()`. A
+controlled pair of metadata updates proves the second mutator cannot enter until
+the first has saved; both fields remain afterward.
+
 - `python3 test_server.py` reports Ran 16 tests, OK. Its existing rename,
-  snapshots and restore recovery checks all still pass, including the forced
-  pre-restore version and restoring the selected historical contents.
+
+snapshots and restore recovery checks all still pass, including the forced
+pre-restore version and restoring the selected historical contents.
+
 - The complete isolated Chrome suite reports 202 passed, 0 failed, with no
-  console warnings or errors. `python3 -m py_compile server.py test_server.py`
-  and `git diff --check` pass.
+
+console warnings or errors. `python3 -m py_compile server.py test_server.py` and
+`git diff --check` pass.
 
 Limitation: the lock serializes filesystem mutation inside this server process,
 but it is not a document revision protocol. A separate client that deliberately
@@ -826,25 +850,25 @@ Acceptance checks:
 - Document simple commands/URLs and expected results in README.
 - Run the full relevant suite once after integration and record the results here.
 
-Implemented 04SEP2026 in app/test.html, app/js/app.js, test_server.py and
+Implemented 04SEP2026 in app/test.html, app/js/app.js, test\_server.py and
 README.md.
 
 The checked-in coverage now follows the defects rather than only the format's
 happy path. Items 1, 2 and 8 use controlled promises around the real store to
 hold writes, reads and lifecycle calls in the exact problematic order. Item 3
 runs the shipped parser in a Web Worker with a three-second deadline. Items 5,
-6, 9 and 10 drive the real table and format helpers through structural edits
-and complete note-file round trips. Items 4, 7 and 11 run the real HTTP handler
+6, 9 and 10 drive the real table and format helpers through structural edits and
+complete note-file round trips. Items 4, 7 and 11 run the real HTTP handler
 against a new temporary notebook for every test, including image/history
 migrations and fault-injected atomic replacements.
 
 The browser store suite no longer touches the notebook origin's real
-localStorage, even temporarily. M_store now has a narrow useStorage() test seam,
-and app/test.html installs a fresh in-memory Storage-shaped object before its
-first store operation. Its API endpoints remain controlled stubs and its fake
-paths never reach a mutating server endpoint. The backend suite continues to
-replace NOTES, META_FILE and HISTORY with paths under a temporary directory in
-setUp(), then restores the globals and removes that directory in tearDown().
+localStorage, even temporarily. M\_store now has a narrow useStorage() test
+seam, and app/test.html installs a fresh in-memory Storage-shaped object before
+its first store operation. Its API endpoints remain controlled stubs and its
+fake paths never reach a mutating server endpoint. The backend suite continues
+to replace NOTES, META\_FILE and HISTORY with paths under a temporary directory
+in setUp(), then restores the globals and removes that directory in tearDown().
 
 README now treats both checked-in suites as release checks, gives the browser
 URL and backend command, states their expected results, and includes the source
@@ -853,17 +877,22 @@ compilation and whitespace checks.
 Verified 04SEP2026:
 
 - Browser at http://127.0.0.1:18420/test.html: 202 passed, 0 failed; tab title
-  PASS 202; no console warnings or errors. The page imports the current
-  app/js/app.js, and the local server was stopped after the run.
-- `python3 -m unittest -v test_server.py`: all 16 tests passed, followed by OK.
-  Every test used a throwaway notebook; personal notes and metadata were not
-  opened or changed.
-- `python3 -m py_compile server.py test_server.py` and `git diff --check` both
-  completed with exit status 0.
 
-Remaining limitation: app/test.html is intentionally a browser page rather
-than a headless command, because its parser worker and DOM/table behavior rely
-on browser APIs. The result is explicit in both the page heading and tab title.
+PASS 202; no console warnings or errors. The page imports the current
+app/js/app.js, and the local server was stopped after the run.
+
+- `python3 -m unittest -v test_server.py`: all 16 tests passed, followed by OK.
+
+Every test used a throwaway notebook; personal notes and metadata were not
+opened or changed.
+
+- `python3 -m py_compile server.py test_server.py` and `git diff --check` both
+
+completed with exit status 0.
+
+Remaining limitation: app/test.html is intentionally a browser page rather than
+a headless command, because its parser worker and DOM/table behavior rely on
+browser APIs. The result is explicit in both the page heading and tab title.
 
 ## Completion notes
 
@@ -873,7 +902,6 @@ reproduction context available until the final release checks are complete. Do
 not mark code-inspected risks as experimentally reproduced without running their
 checks.
 
-
 ## Follow-up fixes from implementation review — 04SEP2026
 
 Implemented the four remaining findings in items 1, 2 and 7. This entry
@@ -881,22 +909,29 @@ supersedes those items' earlier limitations about edits during a rename and
 images referenced only by historical versions.
 
 - Save settling now drains until the document is clean instead of returning
-  after three writes. Navigation preserves edits arriving during successive
-  in-flight saves; failed writes still prevent navigation.
+
+after three writes. Navigation preserves edits arriving during successive
+in-flight saves; failed writes still prevent navigation.
+
 - Rename, move, trash and restore now lock input before settling pending work.
-  Older navigation reads are invalidated, concurrent navigation/mutations are
-  rejected, and the editor stays inert until a moved/restored note is reloaded.
-  Failed mutations release the lock without changing the active note identity.
+
+Older navigation reads are invalidated, concurrent navigation/mutations are
+rejected, and the editor stays inert until a moved/restored note is reloaded.
+Failed mutations release the lock without changing the active note identity.
+
 - Image retargeting now handles structured canvas `src` fields in both browser
-  undo/action history and server action snapshots, as well as embedded HTML.
+
+undo/action history and server action snapshots, as well as embedded HTML.
+
 - Image ownership includes version snapshots and action history. Historical
-  images follow a note across folders, destination collisions preserve both
-  files, and another note's historical references keep a shared source copy.
+
+images follow a note across folders, destination collisions preserve both files,
+and another note's historical references keep a shared source copy.
 
 Verification: 214 browser assertions passed with zero failures; all 28 isolated
 backend tests passed. New regressions cover more than three dirty revisions,
 input blocking and failed-rename recovery, canvas-image history, historical
 image moves with destination collisions, and peer history retaining a shared
 image. The real title-rename workflow was exercised on a disposable notebook.
-Python compilation and git diff --check passed. Personal notes were not used
-for mutation testing.
+Python compilation and git diff --check passed. Personal notes were not used for
+mutation testing.

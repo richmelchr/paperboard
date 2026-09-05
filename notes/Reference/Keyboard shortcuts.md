@@ -3,7 +3,7 @@ title: Keyboard shortcuts
 created: 01SEP2026
 modified: 04SEP2026
 font: Roboto
-view: "-8.83,280.68,1"
+view: "-17.83,421.13,1"
 elements:
   - id: t1
     type: text

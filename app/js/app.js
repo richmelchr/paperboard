@@ -775,9 +775,11 @@ const M_format = (() => {
     const color = rgbToHex(node.style.color);
     const bg = rgbToHex(node.style.backgroundColor);
     const size = node.style.fontSize;
+    const family = node.style.fontFamily;
     if (color) bits.push('color:' + color);
     if (bg) bits.push('background:' + bg);
     if (size) bits.push('font-size:' + size.trim());
+    if (family) bits.push('font-family:' + family.replaceAll('"', "'"));
     return bits.join(';');
   }
 
@@ -2961,8 +2963,15 @@ const M_canvas = (() => {
       for (const dir of HANDLES[e.type] || []) {
         const fx = dir.includes('w') ? 0 : dir.includes('e') ? 1 : 0.5;
         const fy = dir.includes('n') ? 0 : dir.includes('s') ? 1 : 0.5;
+        // Keep width grips on the visible part of a tall section as it scrolls.
+        const top = Math.max(12, tl.y), bottom = Math.min(stage.clientHeight - 12, tl.y + h);
+        const handleY = (dir === 'e' || dir === 'w') && bottom >= top
+          ? (top + bottom) / 2 : tl.y + h * fy;
+        const handleX = dir === 'e' && tl.x < 12 && tl.x + w > stage.clientWidth - 12
+          ? stage.clientWidth - 24 : tl.x + w * fx;
         overlay.append(el('div', { class: 'handle', 'data-id': e.id, 'data-dir': dir,
-          style: { left: (tl.x + w * fx) + 'px', top: (tl.y + h * fy) + 'px' } }));
+          title: 'Drag to resize',
+          style: { left: handleX + 'px', top: handleY + 'px' } }));
       }
     }
   }
@@ -4571,18 +4580,12 @@ const M_toolbar = (() => {
   /**
    * The table the tools should act on. `precise` marks the case that matters:
    * the caret is genuinely in a cell, so "delete this row" knows which row is
-   * meant. Selecting a box that happens to hold a table shows the bar — the
-   * whole-table switches still apply — but the per-cell tools stay disabled
-   * rather than quietly acting on the first cell, which is the header.
+   * meant. A section containing a table is not itself a table selection.
    */
   function tableTarget() {
     const cell = rt.caretCell();
     if (cell) return { cell, table: tbl.tableOf(cell), precise: true };
-    const sel = cv.selected();
-    if (sel.length !== 1) return null;
-    const table = cv.editorFor(sel[0].id)?.querySelector('table');
-    const first = table?.querySelector('th, td');
-    return first ? { cell: first, table, precise: false } : null;
+    return null;
   }
 
   /** Which way the last sort on a given table ran, so the button can flip it. */
@@ -5021,9 +5024,11 @@ const M_toolbar = (() => {
       };
     }
 
+    $('#font-select').onmousedown = () => rt.saveRange();
     $('#font-select').onchange = e => {
       const font = e.target.value;
-      if (!cv.applyToSelection({ font }, 'Font → ' + font)) {
+      if (rt.hasSelection()) rt.styleRange({ fontFamily: cv.fontStack(font) }, 'Font → ' + font);
+      else if (!cv.applyToSelection({ font }, 'Font → ' + font)) {
         store.doc.meta.font = font;
         cv.render(); commit('Page font → ' + font);
       }
@@ -5231,10 +5236,91 @@ const M_main = () => {
   // the DOM — nothing to strip before saving, and it survives typing.
 
   let searchTerms = [];
+  let matchRanges = [];
+  let activeMatch = -1;
+  let searchFrame = 0;
+  const searchRail = document.createElement('div');
+  searchRail.id = 'search-rail';
+  searchRail.hidden = true;
+  searchRail.setAttribute('aria-label', 'Search matches and file position');
+  $('#stage').append(searchRail);
+
+  function searchExtent() {
+    const b = cv.contentBounds();
+    const height = $('#stage').clientHeight / cv.view.scale;
+    return { top: Math.min(0, b.y1), bottom: Math.max(b.y2, height), height };
+  }
+
+  function drawSearchRail() {
+    searchFrame = 0;
+    searchRail.hidden = !searchTerms.length;
+    if (searchRail.hidden) return;
+    const { top, bottom, height } = searchExtent();
+    const span = Math.max(1, bottom - top);
+    const position = y => Math.max(0, Math.min(100, (y - top) / span * 100));
+    const viewportTop = -cv.view.y / cv.view.scale;
+    const thumb = document.createElement('div');
+    thumb.className = 'search-position';
+    thumb.style.top = position(viewportTop) + '%';
+    thumb.style.height = Math.max(0, position(viewportTop + height) - position(viewportTop)) + '%';
+    const fragment = document.createDocumentFragment();
+    fragment.append(thumb);
+    const stageRect = $('#stage').getBoundingClientRect();
+    matchRanges.forEach((range, index) => {
+      if (!range.startContainer.isConnected) return;
+      const rect = range.getBoundingClientRect();
+      const y = (rect.top - stageRect.top - cv.view.y) / cv.view.scale;
+      const marker = document.createElement('button');
+      marker.className = 'search-marker' + (index === activeMatch ? ' active' : '');
+      marker.style.top = position(y) + '%';
+      marker.dataset.match = index;
+      marker.title = `Match ${index + 1} of ${matchRanges.length}`;
+      marker.setAttribute('aria-label', marker.title);
+      fragment.append(marker);
+    });
+    searchRail.replaceChildren(fragment);
+  }
+
+  function scheduleSearchRail() {
+    if (!searchFrame) searchFrame = requestAnimationFrame(drawSearchRail);
+  }
+
+  function jumpToMatch(index) {
+    if (!matchRanges.length) return;
+    activeMatch = (index + matchRanges.length) % matchRanges.length;
+    const rect = matchRanges[activeMatch].getBoundingClientRect();
+    const stageRect = $('#stage').getBoundingClientRect();
+    cv.view.y += stageRect.top + stageRect.height / 2 - (rect.top + rect.height / 2);
+    if (rect.left < stageRect.left + 20 || rect.right > stageRect.right - 24)
+      cv.view.x += stageRect.left + stageRect.width / 2 - (rect.left + rect.width / 2);
+    cv.setZoom(cv.view.scale);
+  }
+
+  searchRail.addEventListener('pointerdown', ev => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const marker = ev.target.closest('[data-match]');
+    if (marker) { jumpToMatch(+marker.dataset.match); return; }
+    const rect = searchRail.getBoundingClientRect();
+    const { top, bottom, height } = searchExtent();
+    const y = top + (ev.clientY - rect.top) / rect.height * (bottom - top);
+    cv.view.y = -(y - height / 2) * cv.view.scale;
+    cv.setZoom(cv.view.scale);
+  });
+  searchRail.addEventListener('click', ev => {
+    // Keyboard activation of a marker does not send pointerdown.
+    if (ev.detail === 0 && ev.target.dataset.match != null) jumpToMatch(+ev.target.dataset.match);
+  });
+  searchRail.addEventListener('dblclick', ev => ev.stopPropagation());
+  new ResizeObserver(scheduleSearchRail).observe($('#stage'));
+  new ResizeObserver(() => { if (searchTerms.length) repaintMatches(); }).observe($('#world'));
 
   function paintMatches() {
     if (!window.CSS?.highlights) return;
     CSS.highlights.delete('wb-search');
+    matchRanges = [];
+    activeMatch = -1;
+    scheduleSearchRail();
     if (!searchTerms.length) return;
 
     const ranges = [];
@@ -5254,6 +5340,7 @@ const M_main = () => {
       }
     }
     if (ranges.length) CSS.highlights.set('wb-search', new Highlight(...ranges));
+    matchRanges = ranges.filter(r => r.startContainer.parentElement.closest('.rt'));
   }
 
   const repaintMatches = debounce(paintMatches, 90);
@@ -5281,6 +5368,7 @@ const M_main = () => {
       const first = tree.firstVisibleNote();
       if (first && first !== store.path) await go(first);
       paintMatches();
+      jumpToMatch(0);
       status.hidden = false;
       status.classList.remove('bad');
       const hits = CSS.highlights?.get('wb-search')?.size ?? 0;
@@ -5296,8 +5384,8 @@ const M_main = () => {
     ev.stopPropagation();
     if (ev.key === 'Escape') { ev.target.value = ''; runSearch('', ++searchVersion); ev.target.blur(); }
     if (ev.key === 'Enter') {
-      const first = tree.firstVisibleNote();
-      if (first) go(first);
+      ev.preventDefault();
+      jumpToMatch(activeMatch + (ev.shiftKey ? -1 : 1));
     }
   });
   $('#search-clear').onclick = () => { $('#search').value = ''; runSearch('', ++searchVersion); };
@@ -5451,7 +5539,7 @@ const M_main = () => {
 
   document.addEventListener('selectionchange', debounce(() => toolbar.syncState(), 60));
 
-  cv.mount({ onChange: () => { minimap.draw(); toolbar.syncState(); } });
+  cv.mount({ onChange: () => { minimap.draw(); toolbar.syncState(); scheduleSearchRail(); } });
   minimap.mount();
   toolbar.mount();
   history.mount({ onRevert: () => { toolbar.syncState(); minimap.draw(); repaintMatches(); } });
