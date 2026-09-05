@@ -1,3 +1,121 @@
+/* Paper — every style the app uses, in one sheet.
+   The sections keep their original order, because the theme variables have to
+   be declared before the rules that read them:
+     fonts   vendored @font-face rules (paths are relative to this file)
+     theme   the two colour schemes, as custom properties
+     app     layout, components and canvas chrome
+   ------------------------------------------------------------------------ */
+
+/* ════ fonts ═════════════════════════════════════════════════════════════ */
+
+/* Vendored Google Fonts (latin subset) - fully offline. */
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/JetBrainsMono-400i.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url(../fonts/JetBrainsMono-400.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url(../fonts/JetBrainsMono-700.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: italic;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(../fonts/Roboto-400i.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 400;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(../fonts/Roboto-400.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 500;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(../fonts/Roboto-500.woff2) format('woff2');
+}
+@font-face {
+  font-family: 'Roboto';
+  font-style: normal;
+  font-weight: 700;
+  font-stretch: 100%;
+  font-display: swap;
+  src: url(../fonts/Roboto-700.woff2) format('woff2');
+}
+
+/* ════ theme ═════════════════════════════════════════════════════════════ */
+
+/* ── Two themes ───────────────────────────────────────────────────────────
+   paper   : warm off-white, low contrast, the default
+   darcula : IntelliJ IDEA Darcula — muted blue accent. Same layout as paper;
+             the themes differ only in colour.
+   ------------------------------------------------------------------------ */
+
+:root,
+[data-theme="paper"] {
+  --gutter:        #e6dfd1;
+  --panel:         #f7f3ea;
+  --panel-2:       #efe9dc;
+  --canvas:        #fbf8f1;
+  --line:          #ded5c4;
+  --line-soft:     #e8e0d1;
+  --fg:            #2f2b26;
+  --fg-dim:        #6f665c;
+  --fg-faint:      #9a9086;
+  --accent:        #3b6ea5;
+  --accent-soft:   #d7e4f2;
+  --sel:           #bcd6ef;
+  --sel-ring:      #3b6ea5;
+  --danger:        #b8443a;
+  --shadow:        0 1px 2px rgba(60,48,32,.10), 0 6px 18px rgba(60,48,32,.07);
+  --shadow-pop:    0 8px 30px rgba(60,48,32,.20);
+  --ink:           #2f2b26;
+  color-scheme: light;
+}
+
+[data-theme="darcula"] {
+  --gutter:        #1a1b1e;
+  --panel:         #2b2d30;
+  --panel-2:       #333539;
+  --canvas:        #1e1f22;
+  --line:          #393b40;
+  --line-soft:     #303236;
+  --fg:            #dfe1e5;
+  --fg-dim:        #9da0a8;
+  --fg-faint:      #6f737a;
+  --accent:        #3574f0;
+  --accent-soft:   #2e436e;
+  --sel:           #2e436e;
+  --sel-ring:      #4a86f7;
+  --danger:        #d96a63;
+  --shadow:        0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.32);
+  --shadow-pop:    0 12px 38px rgba(0,0,0,.55);
+  --ink:           #dfe1e5;
+  color-scheme: dark;
+}
+
+/* ════ app ═══════════════════════════════════════════════════════════════ */
+
 /* ── reset / base ─────────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
@@ -15,22 +133,30 @@ button { background: none; border: 0; cursor: pointer; }
 
 /* ── sidebar ──────────────────────────────────────────────────────────── */
 #sidebar {
-  width: 280px; min-width: 180px; max-width: 620px; flex: 0 0 auto;
+  width: 440px; min-width: 320px; max-width: 760px; flex: 0 0 auto;
   background: var(--panel); display: flex; flex-direction: column;
   border-right: 1px solid var(--line);
 }
-[data-theme="darcula"] #sidebar { border-right: 0; }
 
 .side-head {
   display: flex; align-items: center; gap: 6px;
   padding: 10px 10px 6px 14px;
 }
-.brand { font-weight: 700; letter-spacing: .3px; font-size: 13px; color: var(--fg-dim); }
+.brand { font-weight: 700; letter-spacing: .3px; font-size: 14px; color: var(--fg-dim); }
+.emoji-filters { display: flex; align-items: center; gap: 1px; }
+.emoji-filter {
+  width: 25px; height: 25px; padding: 0; border-radius: 6px; font-size: 15px;
+  display: inline-flex; align-items: center; justify-content: center; filter: grayscale(.25); opacity: .72;
+}
+.emoji-filter:hover { background: var(--panel-2); filter: none; opacity: 1; }
+.emoji-filter[aria-pressed="true"] {
+  background: var(--sel); box-shadow: inset 0 0 0 1px var(--sel-ring); filter: none; opacity: 1;
+}
 .side-actions { display: flex; gap: 2px; margin-left: auto; }
 
 .icon {
-  width: 26px; height: 26px; border-radius: 6px; color: var(--fg-dim);
-  display: inline-flex; align-items: center; justify-content: center; font-size: 14px;
+  width: 29px; height: 29px; border-radius: 6px; color: var(--fg-dim);
+  display: inline-flex; align-items: center; justify-content: center; font-size: 17px;
 }
 .icon:hover { background: var(--panel-2); color: var(--fg); }
 
@@ -45,26 +171,31 @@ button { background: none; border: 0; cursor: pointer; }
 .search-status { padding: 0 14px 6px; font-size: 11.5px; color: var(--fg-faint); }
 .search-status.bad { color: var(--danger); }
 
-/* ── tree ─────────────────────────────────────────────────────────────── */
-.tree { flex: 1 1 auto; overflow: auto; padding: 2px 6px 12px; }
+/* ── OneNote-style root / page columns ───────────────────────────────── */
+.notebook-nav { display: grid; grid-template-columns: minmax(145px, .9fr) minmax(165px, 1.1fr); flex: 1 1 auto; min-height: 0; }
+.nav-column { min-width: 0; overflow: auto; padding: 6px 6px 12px; }
+.root-column { border-right: 1px solid var(--line); }
+.nav-empty { padding: 8px 7px; color: var(--fg-faint); font-size: 11.5px; line-height: 1.4; }
 .row {
-  display: flex; align-items: center; gap: 6px; height: 26px;
+  display: flex; align-items: center; gap: 7px; min-height: 30px;
   padding: 0 6px; border-radius: 6px; cursor: default; user-select: none;
   white-space: nowrap;
 }
 .row:hover { background: var(--panel-2); }
-.row.active { background: var(--sel); }
+.row.active, .row.active-folder { background: var(--sel); }
 .row.drop-target { outline: 2px dashed var(--sel-ring); outline-offset: -2px; }
-.row .twist { width: 12px; text-align: center; color: var(--fg-faint); font-size: 9px; flex: 0 0 auto; }
 .row .label { overflow: hidden; text-overflow: ellipsis; }
+/* A folder's name is tinted with the folder's own colour, so the chip and the
+   word read as one thing. The colour is set inline, per row, from the palette. */
 .row.folder .label { font-weight: 500; }
 .row .chip {
-  width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto;
+  width: 12px; height: 12px; border-radius: 3px; flex: 0 0 auto;
   box-shadow: inset 0 0 0 1px rgba(0,0,0,.18);
 }
-.row .pagemark { width: 9px; flex: 0 0 auto; color: var(--fg-faint); font-size: 10px; text-align: center; }
-.row .snip { color: var(--fg-faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
-.kids { margin-left: 12px; border-left: 1px solid var(--line-soft); padding-left: 2px; }
+.row .note-emoji { width: 18px; flex: 0 0 auto; font-size: 14px; text-align: center; }
+.row .snip { flex-basis: 100%; color: var(--fg-faint); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.row.has-snip { height: auto; min-height: 42px; flex-wrap: wrap; align-content: center; padding-top: 4px; padding-bottom: 4px; }
+.row.has-snip .snip { padding-left: 25px; margin-top: -4px; }
 .row .label[contenteditable="true"] {
   background: var(--canvas); outline: 1px solid var(--sel-ring); border-radius: 3px; padding: 0 3px;
 }
@@ -73,21 +204,33 @@ button { background: none; border: 0; cursor: pointer; }
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg-faint);
 }
+.side-foot .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.side-foot .pipe { opacity: .45; flex: 0 0 auto; }
+.side-foot #theme-toggle { flex: 0 0 auto; margin-right: 2px; }
 .save-state.dirty { color: var(--accent); }
 
 #splitter { width: 4px; cursor: col-resize; background: transparent; flex: 0 0 auto; }
 #splitter:hover { background: var(--accent-soft); }
 
+body.pane-hidden #sidebar, body.pane-hidden #splitter { display: none; }
+.pane-btn { flex: 0 0 auto; }
+body.pane-hidden .pane-btn svg .f { fill: none; }
+
 /* ── editor shell ─────────────────────────────────────────────────────── */
 #editor { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--panel); }
 
-#note-head { padding: 12px 20px 6px; border-bottom: 1px solid var(--line-soft); }
+#note-head { padding: 0 20px; }
+#note-head:has(.meta-row:not([hidden])) { padding: 4px 20px 5px; border-bottom: 1px solid var(--line-soft); }
+.title-cell { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 0 auto; }
 .note-title {
-  font-size: 26px; font-weight: 600; letter-spacing: -.2px; outline: none;
-  padding: 2px 0; min-height: 36px;
+  font-size: 16px; font-weight: 600; letter-spacing: -.1px; outline: none;
+  padding: 0 2px; line-height: 30px; min-width: 24px; max-width: 26ch;
 }
+/* A name is only ever 25 characters wide here; anything longer trails off. */
+.note-title:not(:focus) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.note-title:focus { max-width: 42ch; overflow-x: auto; white-space: nowrap; }
 .note-title:empty::before { content: attr(data-placeholder); color: var(--fg-faint); }
-.meta-row { display: flex; gap: 8px; align-items: center; font-size: 11.5px; color: var(--fg-faint); padding-top: 2px; }
+.meta-row { display: flex; gap: 8px; align-items: center; font-size: 11.5px; color: var(--fg-faint); }
 .meta-row .dot { opacity: .5; }
 #backlinks a, .meta a { color: var(--accent); text-decoration: none; }
 #backlinks a:hover { text-decoration: underline; }
@@ -97,14 +240,36 @@ button { background: none; border: 0; cursor: pointer; }
   display: flex; align-items: center; gap: 4px; flex-wrap: wrap;
   padding: 6px 14px; border-bottom: 1px solid var(--line); background: var(--panel);
 }
+/* The main bar is a single row: groups fold into ⋯ before it ever wraps, and
+   in the last resort it scrolls sideways. */
+#toolbar { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+#toolbar::-webkit-scrollbar { height: 0; }
 .tgroup { display: flex; align-items: center; gap: 2px; }
+.tail { display: flex; align-items: center; gap: 4px; }
+/* Undo / zoom and ⋯ follow the rest of the bar rather than sitting off on the right. */
+.tail-wrap { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+#tools-more { font-size: 17px; letter-spacing: 1px; }
+#tools-pop {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  max-width: min(340px, 92vw);
+}
+#tools-pop > * { flex-wrap: wrap; }
+#tools-pop .tgroup, #tools-pop .tail { max-width: 100%; }
 .sep { width: 1px; height: 18px; background: var(--line); margin: 0 3px; }
 .tool, .fmt, .swatch-btn {
-  min-width: 26px; height: 28px; padding: 0 5px; border-radius: 6px;
+  min-width: 30px; height: 30px; padding: 0 6px; border-radius: 6px;
   display: inline-flex; align-items: center; justify-content: center;
-  color: var(--fg-dim); font-size: 13px; line-height: 1;
+  color: var(--fg-dim); font-size: 15px; line-height: 1;
 }
 .tool:hover, .fmt:hover, .swatch-btn:hover { background: var(--panel-2); color: var(--fg); }
+.tool svg, .fmt svg, .icon svg {
+  width: 17px; height: 17px; display: block; pointer-events: none;
+  fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round;
+}
+.tool svg .f, .fmt svg .f, .icon svg .f { fill: currentColor; stroke: none; }
+.tool svg .t, .fmt svg .t { fill: currentColor; stroke: none; font-size: 8.5px; font-weight: 700; }
+.tool[data-tool="box"] svg { width: 21px; height: 21px; }
 .tool.on, .fmt.on { background: var(--sel); color: var(--fg); }
 .fmt:disabled, .swatch-btn:disabled, select:disabled { opacity: .35; cursor: default; }
 .swatch-btn { flex-direction: column; gap: 1px; padding-top: 3px; }
@@ -119,11 +284,35 @@ button { background: none; border: 0; cursor: pointer; }
 #stroke-width { width: 62px; }
 .zoom-label { min-width: 46px; font-variant-numeric: tabular-nums; font-size: 11.5px; }
 
+/* The table tools sit *over* the top of the page, never above it: appearing
+   must not shove the canvas down and move the table out from under the cursor. */
+.table-bar {
+  position: absolute; top: 0; left: 0; right: 0; z-index: 8;
+  gap: 3px; padding-top: 4px; padding-bottom: 4px;
+  background: var(--panel-2); border-bottom: 1px solid var(--line);
+  box-shadow: 0 4px 12px -6px rgba(0,0,0,.35);
+  flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none;
+}
+.table-bar::-webkit-scrollbar { height: 0; }
+.table-bar .fmt { font-size: 12px; min-width: 0; height: 26px; padding: 0 7px; white-space: nowrap; }
+.table-bar .fmt.danger:hover { background: var(--danger); color: #fff; }
+.size-field {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--fg-faint);
+}
+.size-field input {
+  width: 46px; height: 24px; padding: 0 5px; border-radius: 5px;
+  border: 1px solid var(--line); background: var(--canvas); outline: none;
+  font-size: 12px; font-variant-numeric: tabular-nums;
+}
+.size-field input:focus { border-color: var(--sel-ring); box-shadow: 0 0 0 2px var(--accent-soft); }
+.bar-label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--fg-faint); padding-right: 2px;
+}
+
 /* ── stage / infinite canvas ──────────────────────────────────────────── */
 .stage {
   position: relative; flex: 1 1 auto; overflow: hidden; background: var(--canvas);
-  background-image: radial-gradient(var(--canvas-dot) 1px, transparent 1px);
-  background-size: 24px 24px;
   cursor: text;
 }
 .stage[data-tool="pan"], .stage.panning { cursor: grab; }
@@ -132,6 +321,16 @@ button { background: none; border: 0; cursor: pointer; }
 .stage[data-tool="box"]  { cursor: crosshair; }
 .stage[data-tool="line"] { cursor: crosshair; }
 .stage[data-tool="select"] { cursor: default; }
+
+/* Nothing open — the page that was here went to .trash. The canvas still holds
+   a blank document, but it belongs to no file, so it must not be typed into. */
+body.no-note .stage { pointer-events: none; cursor: default; }
+body.no-note .world, body.no-note .minimap { visibility: hidden; }
+body.no-note .stage::after {
+  content: 'No page open. ⌘N makes a new one.';
+  position: absolute; inset: 0; display: grid; place-items: center;
+  color: var(--fg-faint); font-size: 12.5px;
+}
 
 .world { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; }
 .vector { position: absolute; overflow: visible; pointer-events: none; left: 0; top: 0; width: 1px; height: 1px; }
@@ -151,6 +350,12 @@ button { background: none; border: 0; cursor: pointer; }
 .el.box.sel { outline: 1px solid var(--sel-ring); outline-offset: 2px; }
 
 .el.image img { display: block; width: 100%; height: 100%; border-radius: 3px; }
+.image-path {
+  position: absolute; top: calc(100% + 5px); left: 0; width: max(100%, 260px);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--fg-faint); font: 11px/1.35 "JetBrains Mono", ui-monospace, monospace;
+  cursor: text; user-select: text;
+}
 .el.image.sel { outline: 2px solid var(--sel-ring); outline-offset: 2px; }
 .el.ink.sel, .el.line.sel { outline: none; }
 
@@ -164,7 +369,11 @@ button { background: none; border: 0; cursor: pointer; }
 .rt code { font-family: "JetBrains Mono", monospace; font-size: .92em; background: var(--panel-2); padding: 0 3px; border-radius: 3px; }
 .rt a { color: var(--accent); }
 .rt table { border-collapse: collapse; margin: .4em 0; min-width: 160px; }
-.rt th, .rt td { border: 1px solid var(--line); padding: 3px 7px; min-width: 48px; text-align: left; }
+/* --tbl-line is set inline by the line-colour swatch when a table has the caret. */
+.rt th, .rt td {
+  border: 1px solid var(--tbl-line, var(--line)); padding: 3px 7px; min-width: 48px;
+  text-align: left; vertical-align: top;
+}
 .rt th { background: var(--panel-2); font-weight: 600; }
 .rt:empty::before, .rt > p:only-child:empty::before {
   content: "Type here…"; color: var(--fg-faint);
@@ -182,6 +391,20 @@ button { background: none; border: 0; cursor: pointer; }
 .handle[data-dir="nw"], .handle[data-dir="se"] { cursor: nwse-resize; }
 .handle[data-dir="ne"], .handle[data-dir="sw"] { cursor: nesw-resize; }
 .handle.endpoint { border-radius: 50%; background: var(--sel-ring); }
+.handle.grab {
+  width: 15px; height: 15px; margin: -8px 0 0 -8px; border-radius: 50%;
+  background: var(--sel-ring); border: 2px solid var(--canvas); cursor: move;
+  box-shadow: 0 1px 3px rgba(0,0,0,.3);
+}
+.handle.grab:hover { transform: scale(1.15); }
+
+/* Docking dots: the magnets a connector snaps to. */
+.dock {
+  position: absolute; width: 9px; height: 9px; margin: -5px 0 0 -5px;
+  border-radius: 50%; background: var(--canvas); border: 1.5px solid var(--sel-ring);
+  opacity: .7; pointer-events: none; transition: transform .08s;
+}
+.dock.on { opacity: 1; background: var(--sel-ring); transform: scale(1.6); }
 .selbox { position: absolute; border: 1px solid var(--sel-ring); border-radius: 2px; pointer-events: none; }
 .marquee { position: absolute; border: 1px solid var(--sel-ring); background: color-mix(in srgb, var(--accent) 12%, transparent); pointer-events: none; }
 
@@ -220,6 +443,10 @@ button { background: none; border: 0; cursor: pointer; }
 .grid-label { text-align: center; font-size: 11.5px; color: var(--fg-dim); padding-top: 6px; }
 
 .ctx { padding: 5px; min-width: 190px; }
+.ctx .hint {
+  padding: 3px 9px 4px; font-size: 11px; line-height: 1.35; color: var(--fg-faint);
+  max-width: 240px;
+}
 .ctx button {
   display: flex; width: 100%; align-items: center; gap: 8px; text-align: left;
   padding: 5px 9px; border-radius: 6px; font-size: 13px;
@@ -240,6 +467,55 @@ button { background: none; border: 0; cursor: pointer; }
 #palette-list li { padding: 7px 10px; border-radius: 7px; display: flex; gap: 10px; align-items: baseline; cursor: pointer; }
 #palette-list li.on { background: var(--sel); }
 #palette-list .where { margin-left: auto; color: var(--fg-faint); font-size: 11.5px; }
+
+/* ── the History page ─────────────────────────────────────────────────── */
+.sheet {
+  position: fixed; inset: 0; z-index: 70;
+  display: flex; flex-direction: column; align-items: stretch;
+  padding: 7vh max(24px, calc(50vw - 380px)) 8vh;
+  background: color-mix(in srgb, var(--gutter) 78%, transparent);
+  backdrop-filter: blur(3px);
+}
+.sheet > * { flex: 0 0 auto; }
+.sheet-head, .sheet-foot, .history-list {
+  background: var(--panel); border: 1px solid var(--line); border-bottom: 0;
+}
+.sheet-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 16px; border-radius: 10px 10px 0 0;
+}
+.sheet-head h2 { margin: 0; font-size: 15px; letter-spacing: -.1px; }
+.sheet-sub { font-size: 12px; color: var(--fg-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet-foot {
+  padding: 9px 16px; border-bottom: 1px solid var(--line); border-radius: 0 0 10px 10px;
+  font-size: 11.5px; line-height: 1.45; color: var(--fg-faint);
+}
+.history-list {
+  list-style: none; margin: 0; padding: 6px;
+  flex: 1 1 auto; min-height: 0; overflow: auto;
+  border-top: 1px solid var(--line-soft);
+}
+.history-empty { padding: 22px 12px; color: var(--fg-faint); font-size: 12.5px; line-height: 1.5; }
+.history-step {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 8px 10px; border-radius: 7px; cursor: pointer;
+}
+.history-step:hover { background: var(--panel-2); }
+.history-mark {
+  flex: 0 0 18px; text-align: center; color: var(--fg-faint);
+  font-size: 12px; line-height: 1;
+}
+.history-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-when { flex: 0 0 auto; font-size: 11.5px; color: var(--fg-faint); font-variant-numeric: tabular-nums; }
+.history-go {
+  flex: 0 0 auto; width: 104px; text-align: right;
+  font-size: 11.5px; color: var(--accent); opacity: 0;
+}
+.history-step:hover .history-go { opacity: 1; }
+/* The step the page currently looks like: always labelled, never a target. */
+.history-step.here { background: var(--sel); cursor: default; }
+.history-step.here .history-go { opacity: 1; color: var(--fg-dim); }
+.history-step.here .history-label { font-weight: 500; }
 
 .toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
@@ -284,6 +560,36 @@ button { background: none; border: 0; cursor: pointer; }
 .el.text:hover .rt table[data-borders="off"] th,
 .el.text:hover .rt table[data-borders="off"] td { border-color: var(--line-soft); }
 
+/* Row numbers live in a gutter drawn beside the first cell of each row, rather
+   than in a real column: nothing to sort, nothing to type in, nothing to write
+   out to the Markdown. */
+.rt table[data-numbers="on"] { counter-reset: rownum; margin-left: 2.4em; }
+.rt table[data-numbers="on"] tr { counter-increment: rownum; }
+.rt table[data-numbers="on"] tr > :first-child { position: relative; }
+.rt table[data-numbers="on"] tr > :first-child::before {
+  content: counter(rownum);
+  position: absolute; right: 100%; top: -1px; bottom: -1px; width: 2.4em;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--tbl-line, var(--line)); border-right: 0;
+  background: var(--panel-2); color: var(--fg-faint);
+  font-size: .82em; font-variant-numeric: tabular-nums;
+  user-select: none; pointer-events: none;
+}
+/* A header row is a label, not row 1. */
+.rt table[data-numbers="on"] tr:first-child:has(> th) { counter-increment: none; }
+.rt table[data-numbers="on"] tr:first-child:has(> th) > :first-child::before { content: "#"; }
+
+/* Dragging a row or column border. The grip is the last few pixels of a cell,
+   found from script — it knows the canvas zoom — which flags it on the stage.
+   The `.rt` part of each selector is what outranks the editor's own text cursor. */
+.stage.grip-col, .stage.grip-col .rt { cursor: col-resize; }
+.stage.grip-row, .stage.grip-row .rt { cursor: row-resize; }
+
+/* A pinned column width only holds if the table stops sizing to its content. */
+.rt table[style*="table-layout"] { table-layout: fixed; }
+.rt table[style*="table-layout"] th,
+.rt table[style*="table-layout"] td { overflow: hidden; }
+
 /* ── live search highlighting ─────────────────────────────────────────── */
 ::highlight(wb-search) { background: #ffd54a; color: #1c1b19; }
 [data-theme="darcula"] ::highlight(wb-search) { background: #d9a520; color: #14150f; }
@@ -299,6 +605,11 @@ button { background: none; border: 0; cursor: pointer; }
   body.printing .stage { overflow: visible; background: #fff; }
   body.printing .stage::before { display: none; }
   body.printing #note-head { border: 0; padding-left: 0; }
+  /* The title rides in the toolbar now, so print that one cell and nothing else. */
+  body.printing #toolbar { display: block !important; border: 0; padding: 0 0 8px; }
+  body.printing #toolbar > *:not(.title-cell) { display: none !important; }
+  body.printing #pane-toggle { display: none !important; }
+  body.printing .note-title { font-size: 24px; max-width: none; line-height: 1.3; }
   body.printing .el.text .rt { border-color: transparent !important; background: none !important; }
   @page { margin: 12mm; }
 }

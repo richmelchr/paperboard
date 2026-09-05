@@ -3,9 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Paperboard</title>
-<link rel="stylesheet" href="css/fonts.css">
-<link rel="stylesheet" href="css/theme.css">
+<title>Paper</title>
 <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -14,10 +12,17 @@
   <!-- ─────────────── sidebar ─────────────── -->
   <aside id="sidebar">
     <div class="side-head">
-      <div class="brand">Paperboard</div>
+      <div class="brand">Paper</div>
+      <div class="emoji-filters" aria-label="Filter notes by emoji">
+        <button class="emoji-filter" data-emoji="❤️" title="Show heart notes" aria-pressed="false">❤️</button>
+        <button class="emoji-filter" data-emoji="🔥" title="Show fire notes" aria-pressed="false">🔥</button>
+        <button class="emoji-filter" data-emoji="🍕" title="Show pizza notes" aria-pressed="false">🍕</button>
+        <button class="emoji-filter" data-emoji="🌴" title="Show palm notes" aria-pressed="false">🌴</button>
+      </div>
       <div class="side-actions">
+        <button class="icon" id="btn-history" title="History — every step taken on this page">H</button>
         <button class="icon" id="new-note" title="New note (⌘N)">＋</button>
-        <button class="icon" id="new-folder" title="New folder (⇧⌘N)">🗀</button>
+        <button class="icon" id="new-folder" title="New root folder (⇧⌘N)">▣</button>
       </div>
     </div>
 
@@ -28,10 +33,20 @@
     </div>
     <div id="search-status" class="search-status" hidden></div>
 
-    <nav id="tree" class="tree"></nav>
+    <div class="notebook-nav">
+      <section class="nav-column root-column">
+        <nav id="root-list" aria-label="Root folders and notes"></nav>
+      </section>
+      <section class="nav-column file-column">
+        <nav id="file-list" aria-label="Files in selected folder"></nav>
+      </section>
+    </div>
 
     <div class="side-foot">
       <button class="icon" id="theme-toggle" title="Toggle dark mode (⌘⇧D)">◐</button>
+      <span class="meta" id="meta-created"></span>
+      <span class="pipe">|</span>
+      <span class="meta" id="meta-modified"></span>
       <span class="grow"></span>
       <span id="save-state" class="save-state">saved</span>
     </div>
@@ -41,36 +56,28 @@
 
   <!-- ─────────────── editor ─────────────── -->
   <main id="editor">
-    <header id="note-head">
-      <div class="title-row">
-        <div id="note-title" class="note-title" contenteditable="plaintext-only"
-             spellcheck="false" data-placeholder="Untitled"></div>
-      </div>
-      <div class="meta-row">
-        <span class="meta" id="meta-created"></span>
-        <span class="dot">·</span>
-        <span class="meta" id="meta-modified"></span>
-        <span class="dot">·</span>
-        <span class="meta" id="meta-path"></span>
-        <span class="grow"></span>
-        <span class="meta" id="backlinks"></span>
-      </div>
-    </header>
-
     <div id="toolbar" class="toolbar">
-      <div class="tgroup" role="radiogroup" aria-label="Tools">
-        <button class="tool" data-tool="select" title="Select  (V)">⌖</button>
-        <button class="tool" data-tool="text"   title="Text box  (T)">T</button>
-        <button class="tool" data-tool="pen"    title="Draw  (P)">✎</button>
-        <button class="tool" data-tool="box"    title="Box  (R)">▢</button>
-        <button class="caret" id="box-kind" title="Choose shape">▾</button>
-        <button class="tool" data-tool="line"   title="Connector line  (L)">╱</button>
-        <button class="tool" data-tool="pan"    title="Pan  (H / hold space)">✋</button>
+      <div class="title-cell">
+        <button class="icon pane-btn" id="pane-toggle" title="Hide the sidebar  (⌘/)" aria-label="Hide the sidebar"><svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="1.6"/><path d="M9.4 4.5v15"/><path class="f" d="M3 6.1a1.6 1.6 0 0 1 1.6-1.6h4.8v15H4.6A1.6 1.6 0 0 1 3 17.9z"/></svg></button>
+        <div id="note-title" class="note-title" contenteditable="plaintext-only"
+             spellcheck="true" data-placeholder="Untitled"></div>
       </div>
 
       <div class="sep"></div>
 
-      <div class="tgroup">
+      <div class="tgroup" id="g-tools" role="radiogroup" aria-label="Tools">
+        <button class="tool" data-tool="select" title="Select  (V)">↖</button>
+        <button class="tool" data-tool="text"   title="Text box  (T)">T</button>
+        <button class="tool" data-tool="pen"    title="Draw  (P)"><svg viewBox="0 0 24 24"><path d="M3.6 20.4l1.3-4.3L15.5 5.5a2 2 0 0 1 2.8 0l.6.6a2 2 0 0 1 0 2.8L8.4 19.4l-4.8 1z"/><path d="M14.3 6.7l3.4 3.4"/><path class="f" d="M4.9 16.1l3.5 3.3-4.8 1z"/></svg></button>
+        <button class="tool" data-tool="box"    title="Box  (R)"><svg viewBox="0 0 24 24"><rect x="2.6" y="4.6" width="18.8" height="14.8" rx="1.4"/></svg></button>
+        <button class="caret" id="box-kind" title="Choose shape">▾</button>
+        <button class="tool" data-tool="line"   title="Connector line  (L)">╲</button>
+        <button class="tool" data-tool="pan"    title="Pan  (H / hold space)"><svg viewBox="0 0 24 24"><path d="M8.6 11.4V5.1a1.35 1.35 0 0 1 2.7 0v5.3"/><path d="M11.3 10.4V4.2a1.35 1.35 0 0 1 2.7 0v6.2"/><path d="M14 10.6V5.7a1.35 1.35 0 0 1 2.7 0v7.1"/><path d="M8.6 11.8V9.5a1.35 1.35 0 0 0-2.7 0v5.2c0 3.5 2.4 6.1 5.9 6.1h1.5c3.2 0 5.4-2.1 5.4-5.3v-2.7"/></svg></button>
+      </div>
+
+      <div class="sep"></div>
+
+      <div class="tgroup" id="g-font">
         <select id="font-select" title="Font">
           <option value="Roboto">Roboto</option>
           <option value="JetBrains Mono">JetBrains Mono</option>
@@ -87,7 +94,7 @@
 
       <div class="sep"></div>
 
-      <div class="tgroup">
+      <div class="tgroup" id="g-format">
         <button class="fmt" data-cmd="bold" title="Bold  (⌘B)"><b>B</b></button>
         <button class="fmt" data-cmd="italic" title="Italic  (⌘I)"><i>I</i></button>
         <button class="fmt" data-cmd="underline" title="Underline  (⌘U)"><u>U</u></button>
@@ -95,7 +102,7 @@
         <button class="fmt" id="btn-clear-fmt" title="Clear formatting  (⌘\)">T̸</button>
       </div>
 
-      <div class="tgroup">
+      <div class="tgroup" id="g-colors">
         <button class="swatch-btn" id="text-color" title="Text colour">
           A<span class="bar" style="background:#d8574b"></span></button>
         <button class="swatch-btn" id="hilite-color" title="Highlight">
@@ -104,18 +111,17 @@
 
       <div class="sep"></div>
 
-      <div class="tgroup">
-        <button class="fmt" data-cmd="insertUnorderedList" title="Bulleted list">•≡</button>
-        <button class="fmt" data-cmd="insertOrderedList" title="Numbered list">1≡</button>
-        <button class="fmt" data-cmd="outdent" title="Outdent  (⇧Tab)">⇤</button>
-        <button class="fmt" data-cmd="indent" title="Indent  (Tab)">⇥</button>
+      <div class="tgroup" id="g-insert">
+        <button class="fmt" data-cmd="insertUnorderedList" title="Bulleted list"><svg viewBox="0 0 24 24"><circle class="f" cx="4.3" cy="6.6" r="1.7"/><circle class="f" cx="4.3" cy="12" r="1.7"/><circle class="f" cx="4.3" cy="17.4" r="1.7"/><path d="M9.2 6.6h11.4M9.2 12h11.4M9.2 17.4h11.4"/></svg></button>
+        <button class="fmt" data-cmd="insertOrderedList" title="Numbered list"><svg viewBox="0 0 24 24"><path d="M9.2 6.6h11.4M9.2 12h11.4M9.2 17.4h11.4"/><text class="t" x="1" y="9.1">1</text><text class="t" x="1" y="14.5">2</text><text class="t" x="1" y="19.9">3</text></svg></button>
+        <button class="fmt" data-cmd="outdent" title="Outdent  (⇧Tab)"><svg viewBox="0 0 24 24"><path d="M3.4 4.8h17.2M9.6 9.6h11M9.6 14.4h11M3.4 19.2h17.2"/><path class="f" d="M7.4 8.9L3 12l4.4 3.1z"/></svg></button>
+        <button class="fmt" data-cmd="indent" title="Indent  (Tab)"><svg viewBox="0 0 24 24"><path d="M3.4 4.8h17.2M9.6 9.6h11M9.6 14.4h11M3.4 19.2h17.2"/><path class="f" d="M3 8.9L7.4 12 3 15.1z"/></svg></button>
         <button class="fmt" id="btn-link" title="Link  (⌘K)">🔗</button>
-        <button class="fmt" id="btn-table" title="Insert table">▦</button>
+        <button class="fmt" id="btn-table" title="Insert table"><svg viewBox="0 0 24 24"><rect x="3" y="4.6" width="18" height="14.8" rx="1.2"/><path d="M3 9.6h18M3 14.4h18M9 4.6v14.8M15 4.6v14.8"/></svg></button>
       </div>
 
       <div class="sep"></div>
 
-      <button class="fmt" id="shape-menu" title="Shape style" hidden>◈</button>
       <div class="tgroup shape-tools" id="shape-tools">
         <button class="swatch-btn" id="stroke-color" title="Line / border colour">
           ╱<span class="bar" style="background:#4a7fd4"></span></button>
@@ -130,14 +136,11 @@
         <button class="fmt" id="arrow-end" title="Arrow at end">▶</button>
       </div>
 
-      <span class="grow"></span>
-
+      <div class="tail-wrap">
+      <div class="tail">
       <div class="tgroup">
-        <button class="fmt" id="btn-export" title="Export this page">⤓</button>
-      </div>
-      <div class="tgroup">
-        <button class="fmt" id="btn-undo" title="Undo  (⌘Z)">↶</button>
-        <button class="fmt" id="btn-redo" title="Redo  (⇧⌘Z)">↷</button>
+        <button class="fmt" id="btn-undo" title="Undo  (⌘Z)"><svg viewBox="0 0 24 24"><path d="M4.2 9.2h9.6a5.6 5.6 0 0 1 0 11.2H8.4"/><path d="M8 4.8L3.6 9.2 8 13.6"/></svg></button>
+        <button class="fmt" id="btn-redo" title="Redo  (⇧⌘Z)"><svg viewBox="0 0 24 24"><path d="M19.8 9.2h-9.6a5.6 5.6 0 0 0 0 11.2h5.4"/><path d="M16 4.8l4.4 4.4L16 13.6"/></svg></button>
       </div>
       <div class="tgroup zoomer">
         <button class="fmt" id="zoom-out" title="Zoom out">−</button>
@@ -145,11 +148,80 @@
         <button class="fmt" id="zoom-in" title="Zoom in">＋</button>
         <button class="fmt" id="zoom-fit" title="Fit to content (⌘1)">⤢</button>
       </div>
+      </div>
+      <button class="fmt" id="tools-more" title="More tools" aria-label="More tools" hidden>⋯</button>
+      </div>
     </div>
+
+    <header id="note-head">
+      <div class="meta-row" id="meta-row" hidden>
+        <span class="meta" id="backlinks"></span>
+      </div>
+    </header>
 
     <div id="stage" class="stage">
       <div id="world" class="world">
         <svg id="vector" class="vector"></svg>
+      </div>
+      <div id="table-bar" class="toolbar table-bar" hidden>
+        <span class="bar-label">Table</span>
+        <div class="sep"></div>
+        <div class="tgroup">
+          <button class="fmt" data-table="rowAbove" title="Insert a row above this one">＋Row ↑</button>
+          <button class="fmt" data-table="rowBelow" title="Insert a row below this one">＋Row ↓</button>
+          <button class="fmt" data-table="colLeft"  title="Insert a column to the left">＋Col ←</button>
+          <button class="fmt" data-table="colRight" title="Insert a column to the right">＋Col →</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="tgroup">
+          <button class="fmt" data-table="delRow" title="Delete this row">−Row</button>
+          <button class="fmt" data-table="delCol" title="Delete this column">−Col</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="tgroup">
+          <button class="fmt" data-table="mergeRight" title="Merge with the cell to the right">Merge →</button>
+          <button class="fmt" data-table="mergeDown" title="Merge with the cell below">Merge ↓</button>
+          <button class="fmt" id="table-split" data-table="split" title="Split a merged cell">Split</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="tgroup">
+          <button class="fmt" id="table-header" data-table="header" title="Header row">Header</button>
+          <button class="fmt" id="table-rules" data-table="rules" title="Show or hide the rules">Rules</button>
+          <button class="fmt" id="table-numbers" data-table="numbers"
+                  title="Show row numbers down the left">＃</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="tgroup">
+          <button class="fmt" id="table-sort" data-table="sort"
+                  title="Sort the rows on the selected column">⇅ Sort</button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="tgroup">
+          <label class="size-field" title="Width of the selected column, in pixels">
+            <span>W</span>
+            <input id="table-col-w" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="size-field" title="Height of the selected row, in pixels">
+            <span>H</span>
+            <input id="table-row-h" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+          </label>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="tgroup">
+          <button class="fmt danger" data-table="delTable" title="Delete the whole table">Delete table</button>
+        </div>
       </div>
       <div id="overlay" class="overlay"></div>
       <div id="empty-hint" class="empty-hint" hidden>
@@ -168,7 +240,7 @@
   <button class="none-btn" id="color-none">No colour</button>
 </div>
 
-<div id="shape-pop" class="pop" hidden></div>
+<div id="tools-pop" class="pop" hidden></div>
 
 <div id="table-pop" class="pop table-pop" hidden>
   <div class="grid-pick" id="grid-pick"></div>
@@ -177,6 +249,21 @@
 
 <div id="ctx" class="ctx" hidden></div>
 
+<!-- the History page: every named step taken on the open note -->
+<div id="history" class="sheet" hidden aria-label="History">
+  <div class="sheet-head">
+    <h2>History</h2>
+    <span class="sheet-sub" id="history-sub"></span>
+    <span class="grow"></span>
+    <button class="icon" id="history-close" title="Close  (Esc)">✕</button>
+  </div>
+  <ol id="history-list" class="history-list"></ol>
+  <div class="sheet-foot">
+    Typing is left out on purpose — only the steps worth going back to are kept,
+    newest first, up to 100.
+  </div>
+</div>
+
 <div id="palette" class="palette" hidden>
   <input id="palette-input" placeholder="Jump to a note, or type a command…" spellcheck="false">
   <ul id="palette-list"></ul>
@@ -184,6 +271,6 @@
 
 <div id="toast" class="toast" hidden></div>
 
-<script type="module" src="js/main.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

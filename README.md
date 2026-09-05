@@ -1,4 +1,4 @@
-# Paperboard
+# Paper
 
 A local, file-backed notebook that runs in your browser. OneNote's shape —
 coloured section folders, free-form pages, an infinite canvas — but every page
@@ -8,18 +8,23 @@ No database, no build step, no dependencies. Python's standard library serves
 it; the browser does the rest.
 
 ```sh
-./paperboard              # http://127.0.0.1:8420, opens your browser
-./paperboard --port 9000  # or --host, --no-open
+./paper              # http://127.0.0.1:8420, opens your browser
+./paper --port 9000  # or --host, --no-open
 ```
 
 ---
 
-## The tree *is* the folder
+## The folders *are* the notebook
 
-`notes/` is the notebook. What you see in the sidebar is exactly what is on
-disk — rename a folder in Finder and the app follows on its next poll; rename
-it in the app and the file moves. Deleting moves things to `notes/.trash/`
-rather than erasing them.
+`notes/` is the notebook. The first navigation column contains root folders
+and loose root notes; selecting a folder fills the second column with its
+direct pages. Paper deliberately supports one folder level only. If nested
+folders exist on disk, they and their notes stay untouched but are omitted
+from navigation and search.
+
+Rename a root folder in Finder and the app follows on its next poll; rename it
+in the app and the file moves. Deleting moves things to `notes/.trash/` rather
+than erasing them.
 
 ```
 notes/
@@ -35,10 +40,15 @@ notes/
     └── Keyboard shortcuts.md
 ```
 
-Folder colours live in `notes/.paperboard.json` — the one piece of metadata
-that has nowhere natural to live inside a note. Deleted notes go to
+Folder colours live in `notes/.paper.json` — the one piece of metadata
+that has nowhere natural to live inside a note. A folder's name is written in
+its own colour, so the chip and the word read as one thing. Deleted notes go to
 `notes/.trash/`, and earlier versions to `notes/.history/`; both are hidden
 from the sidebar, from search and from git.
+
+Notes can be tagged with exactly one of ❤️, 🔥, 🍕 or 🌴 from their context
+menu. The same four buttons beside **Paper** filter both navigation columns;
+the assignments also live in `notes/.paper.json`.
 
 The project is a git repository, so `git log` is the long-term history and
 `notes/.history/` is the ten-minute one.
@@ -97,13 +107,15 @@ Element types: `text`, `box`, `line`, `ink`, `image`. Boxes take a `shape` of
 HTML appears (`<span style="color:…;font-size:20px">`), because Markdown has no
 syntax for them.
 
-Tables are GFM pipe tables while they can be. Merged cells and hidden rules have
-no pipe-table spelling, so such a table is written as a raw HTML block instead —
-still legal Markdown, and still readable:
+Tables are GFM pipe tables while they can be. A table carrying anything a pipe
+table cannot spell — merged cells, hidden rules, row numbers, a line colour,
+dragged column widths or row heights — is written as a raw HTML block instead,
+still legal Markdown and still readable:
 
 ```html
-<table data-borders="off">
-<tr><th colspan="2">Storage</th></tr>
+<table data-numbers="on" style="table-layout: fixed; width: 420px;">
+<colgroup><col style="width: 120px;"><col style="width: 300px;"></colgroup>
+<tr style="height: 40px;"><th colspan="2">Storage</th></tr>
 <tr><td>prose</td><td>Markdown body</td></tr>
 </table>
 ```
@@ -115,17 +127,30 @@ Hand-edit a note in your editor and the app reloads it within a couple of
 seconds. Drop a plain `.md` file into `notes/` with no frontmatter at all and
 it opens as a single text box.
 
+**Imported files.** A `.md` file that already carries someone else's
+frontmatter — a `title:` and a `tags:` list from another notes app, say — opens
+the same way: with no `elements:` to lay out, the whole body becomes one text
+box. Frontmatter keys Paper does not own (anything but `title`, `created`,
+`modified`, `font`, `view` and `elements`) are never interpreted, but they are
+kept verbatim and written back in place, so opening and saving a note is never
+the reason a field disappeared. The same rule applies inside the body: prose
+above the first `<!--@id-->` marker, or a block whose element definition is
+missing or malformed, is adopted into a text box below the rest rather than
+dropped.
+
 ### Images
 
 Pasting or dropping an image saves it beside the note, in that folder's
 `images/` directory, named after the note: `Kickoff1.png`, `Kickoff2.png`, and
-so on. Rename the note and its images are renamed with it.
+so on. Rename the note and its images are renamed with it. The absolute local
+file path appears directly below the image by default. Right-click the image
+to hide/show that label or copy the path.
 
 ## Search
 
-The sidebar search hides every note and folder that doesn't match, and every
-match in the page you have open lights up as you type — including matches in
-text you are editing at that moment. It takes
+The sidebar search hides every note and folder that doesn't match, opens the
+first matching page as you type, and lights up every match in that page —
+including matches in text you are editing at that moment. It takes
 uppercase boolean operators, quoted phrases and parentheses; adjacent terms are
 an implicit AND.
 
@@ -160,6 +185,8 @@ does. ⌘-click a link to open it.
 | ⌘⇧D | Toggle dark mode |
 | ⌘D | Duplicate selection · ⌫ delete |
 | ⌘\\ | Clear formatting from the selection |
+| ⌘/ | Hide or show the left pane |
+| ⇧⌘H | History — the steps taken on this page |
 | ⇧⌘P | Print, or save as PDF |
 | V T P R L H | Select, text, draw, box, connector, pan |
 | Space-drag | Pan · ⌘-scroll to zoom · arrows nudge |
@@ -167,6 +194,13 @@ does. ⌘-click a link to open it.
 
 Typing `- ` starts a bullet, `1. ` a numbered list, `# ` `## ` `### ` a heading
 and `> ` a quote. Tab and ⇧Tab indent inside lists.
+
+Chrome spellchecking is enabled in note titles and text boxes. An ordinary
+right-click inside any editor — text box, sticky note, table cell, or over a
+selection — opens Paper's own menu, with cut, copy, paste, select all and the
+formatting and table commands. Option-right-click falls through to Chrome's
+native menu, which is the only way to reach Inspect and the spelling
+suggestions: a page cannot open either of those itself.
 
 ## Tables
 
@@ -178,13 +212,38 @@ delete the table, merge a cell with the one to its right or below, split a
 merged cell back apart, hide or show the rules, and turn the header row on or
 off. Tab walks the cells, and tabbing past the last one adds a row.
 
+Put the caret in a cell and the **Table** row appears, floating over the top of
+the page rather than pushing it down. Alongside the row and column commands it
+carries:
+
+- **#** — a gutter of row numbers down the left. It is drawn, not stored: there
+  is no extra column to sort, type in or trip over.
+- **⇅ Sort** — sorts the rows on the column the caret is in. Click again for the
+  other direction. Numbers sort as numbers, blanks sink to the bottom, and a
+  header row stays put.
+- **W** and **H** — the width of the selected column and the height of its row,
+  in pixels. They show what is there and set what you type.
+
+The per-cell tools — add and delete rows and columns, merge, split, sort, W and
+H — need to know *which* cell, so they stay greyed out until the caret is in
+one. Selecting a box that happens to hold a table still gets you the
+whole-table switches: Header, Rules, **#** and Delete table.
+
+You can also drag a column's right edge or a row's bottom edge; the cursor
+changes when you are on one. The first drag freezes every column at the width it
+already had, so widening one column no longer steals room from its neighbours.
+
+The **╱** line-colour swatch in the main toolbar paints the table's rules while
+the caret is in a cell — it goes back to shapes as soon as one is selected.
+
 ## Shapes and export
 
 The **▾** beside the box tool chooses rectangle, ellipse or sticky note.
 Connectors meet an ellipse on its curve rather than its bounding box.
 
-**⤓** exports the page as a PNG (2×, everything inlined so it renders anywhere),
-as an SVG, or through the print dialog — where macOS offers *Save as PDF*.
+Export lives in the command palette (⌘K): the page goes out as a PNG (2×,
+everything inlined so it renders anywhere), as an SVG, or through the print
+dialog — ⇧⌘P, where macOS offers *Save as PDF*.
 
 ## Themes
 
@@ -202,21 +261,62 @@ character, which is what keeps the Markdown clean.
 ```
 server.py         REST API, static files, boolean search, backlinks — stdlib only
 app/index.html    the shell
-app/css/          theme.css (both palettes), app.css, fonts.css
-app/js/format.js  the note format: frontmatter + Markdown ⇄ HTML
-app/js/store.js   open note, undo/redo, autosave, external-change watching
-app/js/canvas.js  viewport, elements, selection, box/line/ink tools
-app/js/richtext.js  formatting, paste rules, auto-transforms, editor menu
-app/js/tree.js    sidebar, folder colours, rename, drag-to-move, filtering
-app/js/toolbar.js · palette.js · minimap.js · menu.js · main.js
-app/test.html     round-trip tests for the file format — open it in the browser
+app/css/app.css   fonts, both palettes, then layout and canvas chrome
+app/js/app.js     the whole front end
+app/test.html     format round-trips and save-path tests — open it in the browser
+test_server.py    backend file tests — python3 test_server.py
 ```
 
-`app/test.html` is the only test suite, and it's the one that matters: it
-asserts that HTML → Markdown → HTML and whole-file save → load are lossless.
-Open <http://127.0.0.1:8420/test.html> after changing `format.js`.
+`app/js/app.js` is one file, but it is still built out of the same sections it
+grew from. Each one is an IIFE that hands back only what the rest of the app
+uses, so its private helpers stay private, and they are ordered so that each
+runs after whatever it depends on:
+
+```
+util · api      DOM and string helpers; the fetch wrapper
+format          the note format: frontmatter + Markdown ⇄ HTML
+table · menu    table grid surgery; the shared context menu
+store           open note, undo/redo, autosave, external-change watching
+richtext        formatting, paste rules, auto-transforms, editor menu
+canvas          viewport, elements, selection, box/line/ink tools
+minimap · export · tree · palette · toolbar
+main            wiring: theme, note lifecycle, header, search, shortcuts
+```
+
+`app/css/app.css` is likewise one sheet in three sections, in the order the
+cascade needs: the vendored `@font-face` rules, the theme custom properties,
+then everything that reads them.
+
+`app/test.html` is the front end's test suite, and it's the one that matters
+most: it
+asserts that HTML → Markdown → HTML and whole-file save → load are lossless,
+and that the store never books an edit as saved that a write did not carry.
+It imports the format helpers from `app/js/app.js`, which is why that file
+exports them and only wires up the UI when a canvas is actually on the page;
+the store tests come in through the same door, and run against stub API
+responses that can be held open, so they never touch the notebook. Open
+<http://127.0.0.1:8420/test.html> after changing the format or store sections.
+
+`test_server.py` covers what a browser cannot see: it runs the real handler over
+HTTP against a throwaway notebook in a temporary directory — your own notes are
+never opened — and asserts that renaming or moving a note carries its own images
+and only its own. Run `python3 test_server.py` after changing `server.py`; it
+prints `OK` and needs nothing installed.
 
 `window.wb` is exposed in the console (`wb.store.doc`, `wb.canvas.selected()`).
+
+## History
+
+**H** in the sidebar — or ⇧⌘H — opens the History page: the named steps taken on
+the open note, newest first, up to a hundred. Pasting, cutting, deleting
+objects, colour changes, row and column edits, sorting, resizing. Typing is
+deliberately absent; ⌘Z is for that, and a keystroke log would bury everything
+worth finding.
+
+Each step holds the whole document as it stood afterwards, so clicking one puts
+the page back the way it was — and the jump is itself a step, so it can be
+undone in turn. The log is saved beside the note in `notes/.history/` and is
+still there after a restart.
 
 ## Version history
 
@@ -232,7 +332,8 @@ undoable.
 - If you edit a note on disk *and* in the app at the same time, the app warns
   and its version wins on save.
 - Undo history is kept per note for the 24 most recent notes you have opened,
-  and is cleared when the app is reloaded.
+  and is cleared when the app is reloaded. The History page outlives a reload;
+  the undo stack does not.
 - Live search highlighting needs the CSS Custom Highlight API (Chrome 105+,
   Safari 17.2+). Without it, search still filters the sidebar.
 - Below roughly a 1400px window the shape controls fold into the **◈** button;

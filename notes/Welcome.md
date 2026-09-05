@@ -1,9 +1,9 @@
 ---
 title: Welcome
 created: 01SEP2026
-modified: 02SEP2026
+modified: 04SEP2026
 font: Roboto
-view: "58.9,300.56,1"
+view: "42.17,247.68,1"
 elements:
   - id: t1
     type: text
@@ -19,8 +19,8 @@ elements:
     h: 224
   - id: b1
     type: box
-    x: 820.04
-    y: 82.37
+    x: 638.02
+    y: -158.5
     w: 230
     h: 100
     fill: none
@@ -30,8 +30,8 @@ elements:
   - id: b2
     type: box
     shape: sticky
-    x: 699.61
-    y: 300.25
+    x: 798.17
+    y: 279.39
     w: 200
     h: 150
     fill: "#ffe9a8"
@@ -41,8 +41,13 @@ elements:
   - id: l1
     type: line
     from: b1
-    x2: 794.63
-    y2: 300.62
+    fromPort: s
+    to: b2
+    toPort: n
+    x1: 744.67
+    y1: -39.95
+    x2: 896.37
+    y2: 259.98
     arrowStart: false
     arrowEnd: true
     stroke: "#8a63c9"
@@ -64,16 +69,33 @@ elements:
     y: 631.86
     w: 544
     h: 192
-  - id: tsnprx9
-    type: text
-    x: 16.72
-    y: -298.97
-    w: 340
-    h: 54
   - id: ty1gwnk
     type: text
     x: -432.28
     y: -318.97
+    w: 340
+    h: 54
+  - id: be9m6wg
+    type: box
+    shape: sticky
+    x: 134.03
+    y: -159.59
+    w: 178.07
+    h: 145.01
+    fill: "#b8443a"
+    stroke: none
+    strokeWidth: 0
+    radius: 3
+  - id: tshaebx
+    type: text
+    x: 802.83
+    y: 40.32
+    w: 340
+    h: 54
+  - id: tl8g6vx
+    type: text
+    x: 1066.83
+    y: -19.68
     w: 340
     h: 54
 ---
@@ -111,7 +133,7 @@ right-click for **Paste with formatting**.
 See also [[Kickoff]] and [[Keyboard shortcuts]].
 
 <!--@b1-->
-**Boxes** hold text too — click once to select, again to type.
+**Boxes** hold text too — click once to select, somethn .
 
 <!--@b2-->
 Sticky notes and ellipses come from the shape menu.
@@ -125,8 +147,14 @@ Sticky notes and ellipses come from the shape menu.
 
 \
 
-<!--@tsnprx9-->
+<!--@ty1gwnk-->
 \
 
-<!--@ty1gwnk-->
+<!--@be9m6wg-->
+\
+
+<!--@tshaebx-->
+\
+
+<!--@tl8g6vx-->
 \

@@ -1,4 +1,4 @@
 #!/bin/sh
-# Start Paperboard and open it in the browser.  Any flags are passed through
+# Start Paper and open it in the browser.  Any flags are passed through
 # to server.py (--port, --host, --no-open).
 exec python3 "$(dirname "$0")/server.py" "$@"

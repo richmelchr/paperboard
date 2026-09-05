@@ -1,14 +1,22 @@
 ---
 title: Kickoff
 created: 01SEP2026
-modified: 02SEP2026
+modified: 03SEP2026
 font: Roboto
+view: "135,146,1"
 elements:
   - id: t1
     type: text
-    x: 60
-    y: 40
+    x: -17.98
+    y: -4.36
     w: 620
+    h: 288
+  - id: tioisl6
+    type: text
+    x: 202.73
+    y: 448.88
+    w: 340
+    h: 54
 ---
 
 <!--@t1-->
@@ -17,10 +25,13 @@ elements:
 Agenda for the project kickoff. Still a **draft** until the budget lands.
 
 - Scope review
-- <span style="background:#ffe479">Budget signoff</span>
+- <span style="background:#b8443a">Budget signoff</span>
 - Risk register — see [[Architecture]]
 
 | Item | Owner | Due |
 | --- | --- | --- |
 | Scope | Dana | 12SEP2026 |
 | Budget | Ravi | 19SEP2026 |
+
+<!--@tioisl6-->
+\
