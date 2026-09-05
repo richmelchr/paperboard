@@ -12,8 +12,12 @@ under ./notes and the on-disk folder tree IS the notebook tree.
 import argparse
 import json
 import mimetypes
+import os
 import re
 import shutil
+import stat
+import tempfile
+import threading
 import time
 import urllib.parse
 import webbrowser
@@ -34,6 +38,7 @@ ACTIONS_KEPT = 100            # steps in a note's action log
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp"}
 HIDDEN = {"images", ".trash", ".history"}
 NOTE_EMOJIS = {"❤️", "🔥", "🍕", "🌴"}
+PERSIST_LOCK = threading.RLock()
 
 mimetypes.add_type("application/font-woff2", ".woff2")
 mimetypes.add_type("text/javascript", ".js")
@@ -70,6 +75,73 @@ def unique(path):
         if not cand.exists():
             return cand
         n += 1
+
+
+def _fsync_dir(path):
+    """Best-effort persistence for the directory entry changed by os.replace()."""
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass                       # some filesystems do not support directory fsync
+    finally:
+        os.close(fd)
+
+
+def atomic_replace(path, writer):
+    """Write through a hidden sibling, then replace `path` in one operation.
+
+    `writer` receives a binary file object. Until it returns and the file has
+    been flushed successfully, the destination is untouched. The process-wide
+    lock also keeps server mutations from interleaving their replacement steps;
+    callers still own any higher-level revision or request ordering rules.
+    """
+    path = Path(path)
+    with PERSIST_LOCK:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            mode = 0o644
+        fd, raw_tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp",
+                                       dir=str(path.parent))
+        tmp = Path(raw_tmp)
+        try:
+            os.fchmod(fd, mode)
+            with os.fdopen(fd, "wb") as out:
+                fd = -1
+                writer(out)
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(tmp, path)
+            tmp = None
+            _fsync_dir(path.parent)
+        finally:
+            if fd >= 0:
+                os.close(fd)
+            if tmp is not None:
+                try:
+                    tmp.unlink()
+                except FileNotFoundError:
+                    pass
+
+
+def atomic_write_bytes(path, data):
+    atomic_replace(path, lambda out: out.write(data))
+
+
+def atomic_write_text(path, text):
+    atomic_write_bytes(path, text.encode("utf-8"))
+
+
+def atomic_copyfile(src, dst):
+    def copy(out):
+        with Path(src).open("rb") as incoming:
+            shutil.copyfileobj(incoming, out)
+    atomic_replace(dst, copy)
 
 
 # --------------------------------------------------------------------------
@@ -166,22 +238,28 @@ def apply_image_renames(text, renamed):
     return "".join(out)
 
 
+def retitled(text, new_stem):
+    """The frontmatter title follows the filename, which is what the app shows."""
+    match = FM_RE.match(text)
+    if not match:
+        return text
+    frontmatter, body = match.group(1), match.group(2)
+    title = "title: " + json.dumps(new_stem, ensure_ascii=False)
+    if re.search(r"(?m)^title:.*$", frontmatter):
+        frontmatter = re.sub(r"(?m)^title:.*$", lambda _: title, frontmatter, count=1)
+    else:
+        frontmatter = title + "\n" + frontmatter
+    return "---\n" + frontmatter + "\n---\n" + body
+
+
 def rewrite_renamed_note(path, new_stem, renamed):
     """Keep the visible title and the moved images' references aligned to a rename."""
-    try:
-        text = path.read_text("utf-8")
-    except OSError:
-        return
-    match = FM_RE.match(text)
-    if match:
-        frontmatter, body = match.group(1), match.group(2)
-        title = "title: " + json.dumps(new_stem, ensure_ascii=False)
-        if re.search(r"(?m)^title:.*$", frontmatter):
-            frontmatter = re.sub(r"(?m)^title:.*$", lambda _: title, frontmatter, count=1)
-        else:
-            frontmatter = title + "\n" + frontmatter
-        text = "---\n" + frontmatter + "\n---\n" + body
-    path.write_text(apply_image_renames(text, renamed), "utf-8")
+    with PERSIST_LOCK:
+        try:
+            text = path.read_text("utf-8")
+        except OSError:
+            return
+        atomic_write_text(path, apply_image_renames(retitled(text, new_stem), renamed))
 
 
 # --------------------------------------------------------------------------
@@ -197,7 +275,16 @@ def load_meta():
 
 def save_meta(meta):
     NOTES.mkdir(parents=True, exist_ok=True)
-    META_FILE.write_text(json.dumps(meta, indent=2), "utf-8")
+    atomic_write_text(META_FILE, json.dumps(meta, indent=2))
+
+
+def update_meta(change):
+    """Apply one metadata read-modify-write without losing a concurrent field."""
+    with PERSIST_LOCK:
+        meta = load_meta()
+        change(meta)
+        save_meta(meta)
+        return meta
 
 
 PALETTE = ["#d8574b", "#e08a2e", "#d9b52c", "#5aa552", "#3d9aa8",
@@ -208,12 +295,79 @@ def folder_color(meta, rel, index):
     return meta.get("colors", {}).get(rel) or PALETTE[index % len(PALETTE)]
 
 
+def parent_of(rel):
+    """The folder a notes-relative path sits in; "" for the notes root."""
+    return rel.rsplit("/", 1)[0] if "/" in rel else ""
+
+
+def in_order(items, meta, parent):
+    """Sidebar order: what the user dragged into place, then the rest by name.
+
+    Only the paths the user has actually arranged carry a rank, so a folder or
+    note that appears on disk later still lands alphabetically among the ones
+    nobody has moved.
+    """
+    rank = {rel: i for i, rel in enumerate(meta.get("order", {}).get(parent) or [])}
+    return sorted(items, key=lambda it: (rank.get(it["path"], len(rank)), it["name"].lower()))
+
+
+def migrate_meta(meta, old_rel, new_rel, is_dir):
+    """Carry one renamed or moved path through every sidecar field."""
+    def remap(rel):
+        if rel == old_rel:
+            return new_rel
+        if is_dir and rel.startswith(old_rel + "/"):
+            return new_rel + rel[len(old_rel):]
+        return rel
+
+    for field in ("colors", "emojis"):
+        values = meta.get(field)
+        if values:
+            meta[field] = {remap(key): value for key, value in values.items()}
+    if meta.get("archived"):
+        meta["archived"] = [remap(rel) for rel in meta["archived"]]
+    order = meta.get("order")
+    if not order:
+        return
+    if is_dir and old_rel in order:                  # the folder's own child order
+        order[new_rel] = [remap(rel) for rel in order.pop(old_rel)]
+    home = parent_of(new_rel)
+    for key, seq in order.items():
+        if old_rel in seq:
+            at = seq.index(old_rel)
+            seq.pop(at)
+            if key == home:                          # renamed in place: same slot
+                seq.insert(at, new_rel)
+    if home != parent_of(old_rel) and home in order:  # moved: last among new siblings
+        order[home].append(new_rel)
+
+
+def forget_meta(meta, rel):
+    """Drop everything the sidecar remembered about a path and its contents."""
+    def gone(key):
+        return key == rel or key.startswith(rel + "/")
+
+    for field in ("colors", "emojis"):
+        values = meta.get(field) or {}
+        for key in list(values):
+            if gone(key):
+                values.pop(key)
+    if meta.get("archived"):
+        meta["archived"] = [p for p in meta["archived"] if not gone(p)]
+    for key in list(meta.get("order") or {}):
+        if gone(key):
+            meta["order"].pop(key)
+        else:
+            meta["order"][key] = [p for p in meta["order"][key] if not gone(p)]
+
+
 def build_tree(dirpath, meta, counter, depth=0):
     """Build only the root and one folder level.
 
     Paper deliberately has no folders within folders. Deeper directories may
     still exist on disk, but they and their notes are left out of the app.
     """
+    archived = set(meta.get("archived", []))
     rel = "" if dirpath == NOTES else relpath(dirpath)
     folders, notes = [], []
     for child in sorted(dirpath.iterdir(), key=lambda c: c.name.lower()):
@@ -225,6 +379,7 @@ def build_tree(dirpath, meta, counter, depth=0):
             counter[0] += 1
             node = build_tree(child, meta, counter, depth + 1)
             node["color"] = folder_color(meta, node["path"], counter[0] - 1)
+            node["archived"] = node["path"] in archived
             folders.append(node)
         elif child.suffix.lower() == ".md":
             fm, _ = note_meta(child)
@@ -238,7 +393,7 @@ def build_tree(dirpath, meta, counter, depth=0):
                 "emoji": meta.get("emojis", {}).get(relpath(child), ""),
             })
     return {"path": rel, "name": dirpath.name if rel else "Notes",
-            "folders": folders, "notes": notes}
+            "folders": in_order(folders, meta, rel), "notes": in_order(notes, meta, rel)}
 
 
 def all_notes():
@@ -273,25 +428,26 @@ def snapshot(path, force=False):
     Autosave fires every second or so, which would be useless as history, so a
     new version is normally only kept once the newest one is SNAPSHOT_EVERY old.
     `force` overrides that, for the copy taken just before a restore."""
-    if not path.is_file():
-        return
-    folder = snapshot_dir(path)
-    kept = versions_of(folder)
-    if not force and kept and time.time() - kept[-1].stat().st_mtime < SNAPSHOT_EVERY:
-        return
-    current = path.read_bytes()
-    if any(k.read_bytes() == current for k in kept[-2:]):
-        return                                   # nothing new to remember
-    folder.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    target = folder / f"{stamp}.md"
-    n = 1
-    while target.exists():                       # same-second collisions
-        target = folder / f"{stamp}-{n}.md"
-        n += 1
-    shutil.copyfile(path, target)               # mtime = when we snapshotted
-    for old in versions_of(folder)[:-SNAPSHOTS_KEPT]:
-        old.unlink()
+    with PERSIST_LOCK:
+        if not path.is_file():
+            return
+        folder = snapshot_dir(path)
+        kept = versions_of(folder)
+        if not force and kept and time.time() - kept[-1].stat().st_mtime < SNAPSHOT_EVERY:
+            return
+        current = path.read_bytes()
+        if any(k.read_bytes() == current for k in kept[-2:]):
+            return                               # nothing new to remember
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        target = folder / f"{stamp}.md"
+        n = 1
+        while target.exists():                   # same-second collisions
+            target = folder / f"{stamp}-{n}.md"
+            n += 1
+        atomic_write_bytes(target, current)      # mtime = when we snapshotted
+        for old in versions_of(folder)[:-SNAPSHOTS_KEPT]:
+            old.unlink()
 
 
 def move_history(src, dst):
@@ -342,7 +498,107 @@ def write_actions(path, log):
         raise ValueError("action log must be a list")
     f = actions_file(path)
     f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(json.dumps(log[-ACTIONS_KEPT:]), "utf-8")
+    atomic_write_text(f, json.dumps(log[-ACTIONS_KEPT:]))
+
+
+# --------------------------------------------------------------------------
+# bringing a note's history forward through a rename
+# --------------------------------------------------------------------------
+#
+# Both kinds of history hold whole documents as the note stood at the time,
+# with the image filenames and the title it had then. A rename moves the images
+# and retitles the note, so a version or a step restored afterwards would point
+# at files that no longer exist. Every stored document is brought forward with
+# the file, using the same renames the note itself was rewritten with.
+
+def retarget_snap(value, renamed):
+    """Point every image reference inside a stored document at its new filename."""
+    if isinstance(value, str):
+        return apply_image_renames(value, renamed)
+    if isinstance(value, list):
+        return [retarget_snap(v, renamed) for v in value]
+    if isinstance(value, dict):
+        return {k: ("images/" + renamed[v[7:]]
+                    if k == "src" and isinstance(v, str) and v.startswith("images/")
+                    and v[7:] in renamed else retarget_snap(v, renamed))
+                for k, v in value.items()}
+    return value
+
+
+def document_image_refs(value, candidates):
+    """Collect HTML references and structured canvas image sources in snapshots."""
+    if isinstance(value, str):
+        return image_refs(value, candidates)
+    if isinstance(value, list):
+        return set().union(*(document_image_refs(v, candidates) for v in value))
+    if isinstance(value, dict):
+        refs = document_image_refs(list(value.values()), candidates)
+        src = value.get("src")
+        if isinstance(src, str) and src.startswith("images/") and src[7:] in candidates:
+            refs.add(src[7:])
+        return refs
+    return set()
+
+
+def history_image_refs(path, candidates):
+    refs = set()
+    for version in versions_of(snapshot_dir(path)):
+        refs |= image_refs(version.read_text("utf-8"), candidates)
+    for step in read_actions(path):
+        try:
+            doc = json.loads(step.get("snap", ""))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        refs |= document_image_refs(doc, candidates)
+    return refs
+
+
+def migrate_actions(path, new_stem, renamed):
+    """Rewrite the action log's snapshots, which are whole documents as JSON."""
+    log = read_actions(path)
+    changed = False
+    for step in log:
+        snap = step.get("snap") if isinstance(step, dict) else None
+        if not isinstance(snap, str):
+            continue
+        try:
+            doc = json.loads(snap)
+        except ValueError:
+            fixed = apply_image_renames(snap, renamed)   # not a document; text it is
+        else:
+            doc = retarget_snap(doc, renamed)
+            meta = doc.get("meta") if isinstance(doc, dict) else None
+            if isinstance(meta, dict) and isinstance(meta.get("title"), str):
+                meta["title"] = new_stem
+            fixed = json.dumps(doc, ensure_ascii=False, separators=(",", ":"))
+        if fixed != snap:
+            step["snap"] = fixed
+            changed = True
+    if changed:
+        write_actions(path, log)
+
+
+def migrate_history(path, new_stem, renamed):
+    """Bring `path`'s already-moved history in step with its new name.
+
+    The saved versions keep the times they were taken: their order on the
+    History page is their mtime, so rewriting one must not make it the newest.
+    """
+    folder = snapshot_dir(path)
+    if not folder.is_dir():
+        return
+    for version in folder.glob("*.md"):
+        try:
+            text = version.read_text("utf-8")
+        except OSError:
+            continue
+        fixed = apply_image_renames(retitled(text, new_stem), renamed)
+        if fixed == text:
+            continue
+        stat = version.stat()
+        atomic_write_text(version, fixed)
+        os.utime(version, (stat.st_atime, stat.st_mtime))
+    migrate_actions(path, new_stem, renamed)
 
 
 # --------------------------------------------------------------------------
@@ -445,14 +701,19 @@ def collect_terms(node, acc):
     return acc
 
 
-def search(query):
+def search(query, include_archived=False):
     tokens = tokenize(query.strip())
     if not tokens:
         return None
     ast = Parser(tokens).parse()
     terms = collect_terms(ast, [])
+    # Archived folders are out of the way, so they are out of the results too
+    # until the checkbox beside Archive says otherwise.
+    skip = set() if include_archived else set(load_meta().get("archived", []))
     hits = []
     for path in all_notes():
+        if parent_of(relpath(path)) in skip:
+            continue
         fm, text = note_meta(path)
         low = text.lower()
         if not evaluate(ast, low):
@@ -606,7 +867,7 @@ class Handler(BaseHTTPRequestHandler):
                                    "text": path.read_text("utf-8"),
                                    "mtime": path.stat().st_mtime})
         if route == "/api/search":
-            result = search(q.get("q", ""))
+            result = search(q.get("q", ""), q.get("archived") == "1")
             return self.send_json(result or {"matches": None, "terms": []})
         if route == "/api/history":
             path = resolve(q.get("path"))
@@ -632,80 +893,80 @@ class Handler(BaseHTTPRequestHandler):
         q = self.query
         if route == "/api/note":                       # PUT body = full file text
             path = resolve(q.get("path"))
-            path.parent.mkdir(parents=True, exist_ok=True)
-            snapshot(path)
-            path.write_bytes(self.body_bytes())
+            body = self.body_bytes()
+            with PERSIST_LOCK:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                snapshot(path)
+                atomic_write_bytes(path, body)
             return self.send_json({"path": relpath(path), "mtime": path.stat().st_mtime})
 
         data = self.body_json() if route != "/api/image" else {}
 
         if route == "/api/create":
-            path = resolve(data.get("path"))
-            if data.get("kind") == "folder":
-                if path.parent.resolve() != NOTES.resolve():
-                    return self.fail("folders can only be created at the notes root")
-                path.mkdir(parents=True, exist_ok=True)
-            else:
-                if path.suffix.lower() != ".md":
-                    path = path.with_suffix(".md")
-                parent = path.parent.resolve()
-                if parent != NOTES.resolve() and parent.parent != NOTES.resolve():
-                    return self.fail("notes can only be loose or inside one root folder")
-                path = unique(path)
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text(BLANK.format(title=path.stem, date=today()), "utf-8")
+            with PERSIST_LOCK:
+                path = resolve(data.get("path"))
+                if data.get("kind") == "folder":
+                    if path.parent.resolve() != NOTES.resolve():
+                        return self.fail("folders can only be created at the notes root")
+                    path.mkdir(parents=True, exist_ok=True)
+                else:
+                    if path.suffix.lower() != ".md":
+                        path = path.with_suffix(".md")
+                    parent = path.parent.resolve()
+                    if parent != NOTES.resolve() and parent.parent != NOTES.resolve():
+                        return self.fail("notes can only be loose or inside one root folder")
+                    path = unique(path)
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    atomic_write_text(path, BLANK.format(title=path.stem, date=today()))
             return self.send_json({"path": relpath(path)})
 
         if route in ("/api/rename", "/api/move"):
-            src, dst = resolve(data.get("from")), resolve(data.get("to"))
-            if src.is_file() and dst.suffix.lower() != ".md":
-                dst = dst.with_suffix(".md")
-            if src.is_dir() and dst.parent.resolve() != NOTES.resolve():
-                return self.fail("folders cannot be placed inside folders")
-            parent = dst.parent.resolve()
-            if src.is_file() and parent != NOTES.resolve() and parent.parent != NOTES.resolve():
-                return self.fail("notes can only be loose or inside one root folder")
-            if src == dst:
-                return self.send_json({"path": relpath(src)})
-            was_note = src.is_file()
-            old_rel = relpath(src)
-            old_src_history = snapshot_dir(src)
-            dst = unique(dst)
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(src), str(dst))
-            if was_note:
-                rewrite_renamed_note(dst, dst.stem, self.move_images(src, dst))
-            move_history(old_src_history, snapshot_dir(dst))
-            meta = load_meta()
-            colors = meta.get("colors", {})
-            new_rel = relpath(dst)
-            if old_rel in colors:                 # keep a folder's colour
-                colors[new_rel] = colors.pop(old_rel)
-            emojis = meta.get("emojis", {})
-            if was_note and old_rel in emojis:
-                emojis[new_rel] = emojis.pop(old_rel)
-            elif not was_note:
-                for key in list(emojis):
-                    if key.startswith(old_rel + "/"):
-                        emojis[new_rel + key[len(old_rel):]] = emojis.pop(key)
-            if colors or emojis:
-                save_meta(meta)
-            return self.send_json({"path": relpath(dst)})
+            with PERSIST_LOCK:
+                src, dst = resolve(data.get("from")), resolve(data.get("to"))
+                if src.is_file() and dst.suffix.lower() != ".md":
+                    dst = dst.with_suffix(".md")
+                if src.is_dir() and dst.parent.resolve() != NOTES.resolve():
+                    return self.fail("folders cannot be placed inside folders")
+                parent = dst.parent.resolve()
+                if src.is_file() and parent != NOTES.resolve() and parent.parent != NOTES.resolve():
+                    return self.fail("notes can only be loose or inside one root folder")
+                if src == dst:
+                    return self.send_json({"path": relpath(src)})
+                was_note = src.is_file()
+                old_rel = relpath(src)
+                old_src_history = snapshot_dir(src)
+                dst = unique(dst)
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
+                renamed = {}
+                move_history(old_src_history, snapshot_dir(dst))
+                if was_note:
+                    renamed = self.move_images(src, dst)
+                    rewrite_renamed_note(dst, dst.stem, renamed)
+                    migrate_history(dst, dst.stem, renamed)   # and what it used to say
+                meta = load_meta()
+                new_rel = relpath(dst)
+                # colour, emoji, archived flag and sidebar order all key off the
+                # path, so they follow the file rather than being left behind.
+                migrate_meta(meta, old_rel, new_rel, not was_note)
+                if meta:
+                    save_meta(meta)
+            # the renames go back so the browser can bring its in-memory undo
+            # stacks forward too; they hold documents from before the rename.
+            return self.send_json({"path": relpath(dst), "images": renamed,
+                                   "title": dst.stem if was_note else None})
 
         if route == "/api/delete":                     # non-destructive: -> .trash
-            path = resolve(data.get("path"))
-            old_rel = relpath(path)
-            trash = NOTES / ".trash" / datetime.now().strftime("%Y%m%d-%H%M%S")
-            trash.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(path), str(trash / path.name))
-            meta = load_meta()
-            for field in ("colors", "emojis"):
-                values = meta.get(field, {})
-                for key in list(values):
-                    if key == old_rel or key.startswith(old_rel + "/"):
-                        values.pop(key)
-            if meta:
-                save_meta(meta)
+            with PERSIST_LOCK:
+                path = resolve(data.get("path"))
+                old_rel = relpath(path)
+                trash = NOTES / ".trash" / datetime.now().strftime("%Y%m%d-%H%M%S")
+                trash.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(path), str(trash / path.name))
+                meta = load_meta()
+                forget_meta(meta, old_rel)
+                if meta:
+                    save_meta(meta)
             return self.send_json({"trashed": relpath(trash / path.name)})
 
         if route == "/api/restore":
@@ -713,8 +974,9 @@ class Handler(BaseHTTPRequestHandler):
             version = snapshot_dir(path) / (re.sub(r"[^0-9-]", "", data.get("at", "")) + ".md")
             if not version.is_file():
                 return self.fail("no such version", 404)
-            snapshot(path, force=True)          # never lose what is there now
-            shutil.copyfile(version, path)
+            with PERSIST_LOCK:
+                snapshot(path, force=True)      # never lose what is there now
+                atomic_copyfile(version, path)
             return self.send_json({"path": relpath(path), "mtime": path.stat().st_mtime})
 
         if route == "/api/actions":
@@ -723,9 +985,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"ok": True})
 
         if route == "/api/color":
-            meta = load_meta()
-            meta.setdefault("colors", {})[data["path"]] = data["color"]
-            save_meta(meta)
+            def set_color(meta):
+                meta.setdefault("colors", {})[data["path"]] = data["color"]
+
+            update_meta(set_color)
             return self.send_json({"ok": True})
 
         if route == "/api/emoji":
@@ -735,14 +998,44 @@ class Handler(BaseHTTPRequestHandler):
             emoji = data.get("emoji") or ""
             if emoji and emoji not in NOTE_EMOJIS:
                 return self.fail("unsupported note emoji")
-            meta = load_meta()
-            emojis = meta.setdefault("emojis", {})
-            if emoji:
-                emojis[relpath(path)] = emoji
-            else:
-                emojis.pop(relpath(path), None)
-            save_meta(meta)
+            def set_emoji(meta):
+                emojis = meta.setdefault("emojis", {})
+                if emoji:
+                    emojis[relpath(path)] = emoji
+                else:
+                    emojis.pop(relpath(path), None)
+
+            update_meta(set_emoji)
             return self.send_json({"ok": True, "emoji": emoji})
+
+        if route == "/api/order":                      # sidebar order within one column
+            parent = str(data.get("parent") or "")
+            if parent and not resolve(parent).is_dir():
+                return self.fail("no such folder", 404)
+            paths, seen = [], set()
+            for rel in data.get("paths") or []:
+                if isinstance(rel, str) and rel not in seen and parent_of(rel) == parent:
+                    seen.add(rel)
+                    paths.append(rel)
+
+            def set_order(meta):
+                meta.setdefault("order", {})[parent] = paths
+
+            update_meta(set_order)
+            return self.send_json({"ok": True, "paths": paths})
+
+        if route == "/api/archive":
+            path = resolve(data.get("path"))
+            if not path.is_dir() or path.parent.resolve() != NOTES.resolve():
+                return self.fail("only a root folder can be archived", 404)
+            rel, wanted = relpath(path), bool(data.get("archived"))
+
+            def set_archived(meta):
+                kept = [p for p in meta.get("archived", []) if p != rel]
+                meta["archived"] = kept + [rel] if wanted else kept
+
+            update_meta(set_archived)
+            return self.send_json({"ok": True, "archived": wanted})
 
         if route == "/api/image-path":
             note = resolve(data.get("path"))
@@ -756,16 +1049,18 @@ class Handler(BaseHTTPRequestHandler):
 
         if route == "/api/image":
             note = resolve(q.get("path"))
+            body = self.body_bytes()
             ext = "." + (q.get("ext") or "png").lstrip(".").lower()
             if ext not in IMAGE_EXT:
                 return self.fail("unsupported image type %s" % ext)
-            folder = note.parent / "images"
-            folder.mkdir(parents=True, exist_ok=True)
-            n = 1
-            while (folder / f"{note.stem}{n}{ext}").exists():
-                n += 1
-            target = folder / f"{note.stem}{n}{ext}"
-            target.write_bytes(self.body_bytes())
+            with PERSIST_LOCK:
+                folder = note.parent / "images"
+                folder.mkdir(parents=True, exist_ok=True)
+                n = 1
+                while (folder / f"{note.stem}{n}{ext}").exists():
+                    n += 1
+                target = folder / f"{note.stem}{n}{ext}"
+                atomic_write_bytes(target, body)
             return self.send_json({"src": f"images/{target.name}", "name": target.name})
 
         return self.fail("unknown endpoint %s" % route, 404)
@@ -788,7 +1083,8 @@ class Handler(BaseHTTPRequestHandler):
             text = dst.read_text("utf-8")
         except OSError:
             return {}
-        mine = image_refs(text, {p.name for p in old.iterdir() if p.is_file()})
+        candidates = {p.name for p in old.iterdir() if p.is_file()}
+        mine = image_refs(text, candidates) | history_image_refs(dst, candidates)
         if not mine:
             return {}
         shared = set()
@@ -797,6 +1093,7 @@ class Handler(BaseHTTPRequestHandler):
                 continue
             try:
                 shared |= image_refs(peer.read_text("utf-8"), mine)
+                shared |= history_image_refs(peer, mine)
             except OSError:
                 continue
         renamed = {}
@@ -808,7 +1105,7 @@ class Handler(BaseHTTPRequestHandler):
             new.mkdir(parents=True, exist_ok=True)
             want = unique(want)
             if name in shared:
-                shutil.copyfile(str(img), str(want))    # the other note keeps it
+                atomic_copyfile(img, want)              # the other note keeps it
             else:
                 shutil.move(str(img), str(want))
             renamed[name] = want.name

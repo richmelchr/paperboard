@@ -43,6 +43,7 @@ trip('wiki link',        '<p>see <a class="wiki" data-note="Other Note" href="#"
 trip('text colour',      '<p><span style="color:#d8574b">red</span> normal</p>');
 trip('highlight',        '<p><span style="background:#ffe479">lit</span></p>');
 trip('inline code',      '<p>run <code>ls -la</code> now</p>');
+trip('code block',       '<pre>const x = 1;\nconst y = 2;</pre>');
 trip('blockquote',       '<blockquote><p>quoted</p></blockquote>');
 trip('table',            '<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>');
 trip('mixed',            '<h1>T</h1><p>intro <strong>x</strong></p><ul><li>bullet</li></ul>');
@@ -57,8 +58,9 @@ t('angle + amp',     mdToHtml(htmlToMd('<p>a &lt; b &amp;&amp; c &gt; d</p>')), 
 t('backtick',        mdToHtml(htmlToMd('<p>a ` b</p>')), '<p>a ` b</p>');
 t('hash mid-line',   mdToHtml(htmlToMd('<p>issue #42 filed</p>')), '<p>issue #42 filed</p>');
 t('dash start',      mdToHtml(htmlToMd('<p>- not a bullet</p>')), '<p>- not a bullet</p>');
-t('pipe in table',   mdToHtml(htmlToMd('<table><tbody><tr><td>a|b</td></tr></tbody></table>')),
-                     '<table><thead><tr><th>a|b</th></tr></thead><tbody></tbody></table>');
+t('pipe in headerless table',
+  mdToHtml(htmlToMd('<table><tbody><tr><td>a|b</td></tr></tbody></table>')),
+  '<table><tbody><tr><td>a|b</td></tr></tbody></table>');
 
 out.insertAdjacentHTML('beforeend', '<h2>Markdown → HTML</h2>');
 t('md bullets',   mdToHtml('- one\n- two'), '<ul><li>one</li><li>two</li></ul>');
@@ -68,6 +70,48 @@ t('md bold',      mdToHtml('a **b** c'),     '<p>a <strong>b</strong> c</p>');
 t('md escaped *', mdToHtml('a \\*b\\* c'),   '<p>a *b* c</p>');
 t('md table',     mdToHtml('| a | b |\n| --- | --- |\n| 1 | 2 |'),
    '<table><thead><tr><th>a</th><th>b</th></tr></thead><tbody><tr><td>1</td><td>2</td></tr></tbody></table>');
+
+out.insertAdjacentHTML('beforeend', '<h2>Fenced code blocks</h2>');
+
+const codeText = '  const x = "<tag>";  \n\n# not a heading\n- not a list\n| not | a table |';
+const codeHtml = mdToHtml('```js\n' + codeText + '\n```');
+const codeHost = document.createElement('div');
+codeHost.innerHTML = codeHtml;
+const codeNode = codeHost.querySelector('pre code');
+t('fence becomes a code block', codeNode?.textContent === codeText, true);
+t('language annotation is kept', codeNode?.className, 'language-js');
+t('code markup is inert text', codeHost.querySelector('h1, ul, table') === null, true);
+t('literal HTML is escaped in code', codeHtml.includes('&lt;tag&gt;'), true);
+
+const spacedCode = '<pre>first  \n\n\n  second\n</pre>';
+t('code whitespace survives round trip', (() => {
+  const host = document.createElement('div');
+  host.innerHTML = mdToHtml(htmlToMd(spacedCode));
+  return host.querySelector('pre')?.textContent === 'first  \n\n\n  second\n';
+})(), true);
+
+const ticks = '<pre>before\n```\nafter</pre>';
+const tickMd = htmlToMd(ticks);
+t('embedded backticks choose a longer fence', tickMd.startsWith('````\n'), true);
+t('embedded backticks survive round trip', (() => {
+  const host = document.createElement('div');
+  host.innerHTML = mdToHtml(tickMd);
+  return host.querySelector('pre')?.textContent === 'before\n```\nafter';
+})(), true);
+
+const languageBlock = '<pre><code class="language-python">print("ok")</code></pre>';
+t('language survives writer and reader', mdToHtml(htmlToMd(languageBlock)), languageBlock);
+t('tilde fences are read', mdToHtml('~~~\na &lt; b\n~~~'), '<pre>a &amp;lt; b</pre>');
+
+t('code survives a file', (() => {
+  const doc = { meta: { title: 'Code', created: '01JAN2026', modified: '01JAN2026',
+                        font: 'Roboto', view: null },
+                elements: [{ id: 't1', type: 'text', x: 0, y: 0, w: 300,
+                             html: '<pre>  one\n\n# two\n```</pre>' }] };
+  const host = document.createElement('div');
+  host.innerHTML = parseNote(serializeNote(doc)).elements[0].html;
+  return host.querySelector('pre')?.textContent === '  one\n\n# two\n```';
+})(), true);
 
 out.insertAdjacentHTML('beforeend', '<h2>Pipe-prefixed prose</h2>');
 
@@ -153,7 +197,35 @@ t('size survives file',
            return parseNote(serializeNote(d)).elements[0].html; })(),
   '<p><span style="font-size:32px">huge</span></p>');
 
-// merged cells and hidden rules have no pipe-table spelling -> raw HTML block
+// Header absence, merged cells and hidden rules have no pipe-table spelling ->
+// raw HTML block. In particular, treating the first row of a td-only table as
+// a pipe-table header changes the Header-off setting when the note reopens.
+const headerless = '<table><tbody><tr><td>a</td><td><strong>b</strong></td></tr>' +
+  '<tr><td>1</td><td><em>2</em></td></tr></tbody></table>';
+t('headerless -> html block', htmlToMd(headerless).startsWith('<table>'), true);
+trip('headerless round trip', headerless);
+t('headerless keeps row content and formatting', mdToHtml(htmlToMd(headerless)), headerless);
+t('headerless survives a file', (() => {
+  const d = { meta: { title: 'T', created: '01JAN2026', modified: '01JAN2026',
+                      font: 'Roboto', view: null },
+              elements: [{ id: 't1', type: 'text', x: 0, y: 0, w: 300,
+                           html: headerless }] };
+  return parseNote(serializeNote(d)).elements[0].html;
+})(), headerless);
+t('header off stays off', (() => {
+  const host = document.createElement('div');
+  host.innerHTML = '<table><thead><tr><th>a</th><th>b</th></tr></thead>' +
+    '<tbody><tr><td>1</td><td>2</td></tr></tbody></table>';
+  __test.M_table.toggleHeaderRow(host.querySelector('table'));
+  const d = { meta: { title: 'T', created: '01JAN2026', modified: '01JAN2026',
+                      font: 'Roboto', view: null },
+              elements: [{ id: 't1', type: 'text', x: 0, y: 0, w: 300,
+                           html: host.innerHTML }] };
+  const back = document.createElement('div');
+  back.innerHTML = parseNote(serializeNote(d)).elements[0].html;
+  return __test.M_table.hasHeaderRow(back.querySelector('table'));
+})(), false);
+
 const merged = '<table><tr><th colspan="2">Span</th></tr><tr><td>1</td><td>2</td></tr></table>';
 t('merged -> html block', htmlToMd(merged).startsWith('<table>'), true);
 trip('merged round trip', merged);
@@ -165,6 +237,8 @@ trip('rowspan round trip', rowspan);
 t('plain table stays pipes',
   htmlToMd('<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>')
     .startsWith('|'), true);
+trip('header table round trip',
+  '<table><thead><tr><th>a</th></tr></thead><tbody><tr><td>1</td></tr></tbody></table>');
 t('html table amid text',
   mdToHtml('before\n\n' + merged + '\n\nafter').includes('colspan="2"'), true);
 
@@ -463,13 +537,21 @@ out.insertAdjacentHTML('beforeend', '<h2>Saving</h2>');
 
 // The store is driven against stub API responses that can be held open, which
 // is the only way to see what an edit made *during* a write is worth. Nothing
-// here touches the real notebook: every endpoint the store calls is replaced
-// for the rest of the page, the note paths are ones no notebook would have,
-// and the one localStorage key it writes is put back afterwards.
+// here touches the real notebook or normal browser storage: every endpoint the
+// store calls is replaced for the rest of the page, and wb:last lives in a
+// fresh in-memory Storage-shaped object.
 await (async () => { try {
   const { M_store, api } = __test;
-  const { store, open, commit, saveNow, touchView, undo, logAction,
-          settle, moveFile, trashFile, restoreFile } = M_store;
+  const { store, open, commit, saveNow, touchView, undo, logAction, revertTo,
+          reloadChanged, settle, moveFile, trashFile, restoreFile, useStorage } = M_store;
+
+  const stored = new Map();
+  const testStorage = {
+    getItem: key => stored.has(key) ? stored.get(key) : null,
+    setItem: (key, value) => stored.set(key, String(value)),
+    removeItem: key => stored.delete(key),
+  };
+  useStorage(testStorage);
 
   const A = '__test-store-A.md', B = '__test-store-B.md';
   const noteText = (name, body) => `---
@@ -515,8 +597,6 @@ ${body}
                          d.innerHTML = parseNote(disk[path]).elements[0].html;
                          return d.textContent.trim(); };
 
-  const lastKey = localStorage.getItem('wb:last');
-
   // ── an edit made while a save is in flight is not saved by that save ──────
   await open(A);
   edit('<p>one</p>');
@@ -551,6 +631,21 @@ ${body}
   t('the later write wins', body(A), 'four');
   t('both edits are saved', store.dirty, false);
   hold = false;
+
+  // Continuous edits must not hit an arbitrary save-drain limit.
+  const ordinaryWrite = api.write;
+  let editsDuringWrites = 0;
+  api.write = async (path, text) => {
+    const result = await ordinaryWrite(path, text);
+    if (++editsDuringWrites <= 7) edit('<p>continuous ' + editsDuringWrites + '</p>');
+    return result;
+  };
+  edit('<p>before continuous writes</p>');
+  await open(B);
+  t('navigation drains more than three successive dirty revisions', body(A), 'continuous 7');
+  t('navigation only finishes after the old note is saved', store.path, B);
+  api.write = ordinaryWrite;
+  await open(A);
 
   // ── a failed save keeps the work and stops the navigation ────────────────
   edit('<p>five</p>');
@@ -706,15 +801,173 @@ ${body}
   const renaming = moveFile(S, T);
   for (let i = 0; !releaseRename && i < 100; i++) await tick();
   logged.length = 0;
+  const blockedInput = new Event('beforeinput', { bubbles: true, cancelable: true });
+  window.dispatchEvent(blockedInput);
+  t('input is blocked while a rename is in flight', blockedInput.defaultPrevented, true);
+  t('the editor is locked during the mutation', M_store.editingBlocked(), true);
+  let concurrentOpenBlocked = false;
+  try { await open(B); } catch { concurrentOpenBlocked = true; }
+  t('navigation cannot race the filesystem mutation', concurrentOpenBlocked, true);
   logAction('Logged mid-rename');
   releaseRename();
   await renaming;
   api.rename = plainRename;
+  t('the editor stays locked until the renamed file is reloaded', M_store.editingBlocked(), true);
+  await open(T);
+  t('reloading the renamed file unlocks the editor', M_store.editingBlocked(), false);
   await settle();
   t('an action logged during a rename is written under the new name',
     logged.at(-1) && logged.at(-1).path, T);
 
-  lastKey === null ? localStorage.removeItem('wb:last') : localStorage.setItem('wb:last', lastKey);
+  // ── snapshots taken before a rename follow the images the rename moved ───
+  // The server answers a rename with what it did — {old image: new image} and
+  // the note's new title — so the documents held in memory can be brought
+  // forward the way the ones on disk were.
+  const G = '__test-store-G.md', H = '__test-store-H.md';
+  const renamed = api.rename;
+  api.rename = (from, to) => {
+    moveKeys(from, to);
+    return Promise.resolve({ path: to, title: 'H', images: { 'G1.png': 'H1.png' } });
+  };
+  const pasted = '<p><img src="images/G1.png"> and images/G1.png named in prose</p>';
+  const carried = '<p><img src="images/H1.png"> and images/G1.png named in prose</p>';
+
+  disk[G] = noteText('G', 'start');
+  await open(G);
+  store.doc.elements[0].html = pasted;
+  store.doc.elements.push({ id: 'canvas-image', type: 'image', src: 'images/G1.png', x: 0, y: 0, w: 20, h: 20 });
+  commit('Pasted an image');
+  edit('<p>typed on afterwards</p>');
+  await moveFile(G, H);
+  const step = store.actions.find(a => a.label === 'Pasted an image');
+  t('canvas image sources in action history follow a rename',
+    JSON.parse(step.snap).elements.find(e => e.type === 'image').src, 'images/H1.png');
+  t('canvas image sources in undo history follow a rename',
+    JSON.parse(store.history.find(e => JSON.parse(e.snap).elements.some(x => x.type === 'image')).snap)
+      .elements.find(e => e.type === 'image').src, 'images/H1.png');
+  t('a step logged before a rename points at the image the rename made',
+    JSON.parse(step.snap).elements[0].html, carried);
+  t('…and prose that merely names the path is left alone',
+    JSON.parse(step.snap).elements[0].html.includes('images/G1.png named'), true);
+  t('…and it carries the note\u2019s new title', JSON.parse(step.snap).meta.title, 'H');
+  revertTo(step.id);
+  t('going back to that step restores the image where it now is',
+    store.doc.elements[0].html, carried);
+
+  // ── …including an undo stack parked while another note was open ──────────
+  const P = '__test-store-P.md', Q = '__test-store-Q.md';
+  api.rename = (from, to) => {
+    moveKeys(from, to);
+    return Promise.resolve({ path: to, title: 'Q', images: { 'P1.png': 'Q1.png' } });
+  };
+  disk[P] = noteText('P', 'start');
+  await open(P);
+  edit('<p><img src="images/P1.png"></p>');
+  await open(B);                                  // parks P's undo stack
+  await moveFile(P, Q);
+  await open(Q);
+  undo();
+  t('an undo into a parked stack lands on the moved image',
+    store.doc.elements[0].html, '<p><img src="images/Q1.png"></p>');
+  api.rename = async () => { throw new Error('rename failed'); };
+  let failedRename = false;
+  try { await moveFile(Q, P); } catch { failedRename = true; }
+  t('a failed rename is reported', failedRename, true);
+  t('a failed rename unlocks the editor', M_store.editingBlocked(), false);
+  t('a failed rename retains the active identity', store.path, Q);
+  api.rename = renamed;
+
+  out.insertAdjacentHTML('beforeend', '<h2>Navigation ordering</h2>');
+
+  // Reads are held independently so their responses can be delivered in the
+  // opposite order from the clicks that asked for them.
+  const NA = '__test-nav-A.md', NB = '__test-nav-B.md';
+  disk[NA] = noteText('Nav A', 'older selection');
+  disk[NB] = noteText('Nav B', 'latest selection');
+  const reads = new Map();
+  api.read = path => new Promise((resolve, reject) => reads.set(path, { resolve, reject }));
+  const readAsked = async path => {
+    for (let i = 0; !reads.has(path) && i < 100; i++) await tick();
+  };
+  const answerRead = (path, text = disk[path], mtime = 40) => {
+    const request = reads.get(path); reads.delete(path);
+    request.resolve({ text, mtime });
+  };
+
+  const firstOpen = open(NA);
+  await readAsked(NA);
+  const latestOpen = open(NB);
+  await readAsked(NB);
+  answerRead(NB);
+  t('the latest navigation applies', await latestOpen, true);
+  answerRead(NA);
+  t('an older navigation reports that it was superseded', await firstOpen, false);
+  t('reversed read completion leaves the latest note active', store.path, NB);
+  t('reversed read completion leaves the latest document visible',
+    store.doc.elements[0].html, '<p>latest selection</p>');
+  t('reversed read completion keeps the latest save metadata', store.savedText, disk[NB]);
+  t('reversed read completion keeps the latest remembered note',
+    testStorage.getItem('wb:last'), NB);
+
+  // A rejected request is just as stale as a successful one once a later click
+  // has won. It resolves false, so main.go neither selects it nor shows its error.
+  const staleError = open(NA);
+  await readAsked(NA);
+  const successful = open(NB);
+  await readAsked(NB);
+  answerRead(NB, disk[NB], 41);
+  await successful;
+  const oldFailure = reads.get(NA); reads.delete(NA);
+  oldFailure.reject(new Error('old read failed'));
+  t('an error from a superseded navigation is ignored', await staleError, false);
+  t('a stale error cannot replace the newer successful note', store.path, NB);
+
+  // The watcher captures both visit identity and save metadata before reading.
+  // Even A → B → A would reject the first visit's response by token; this
+  // simpler A → B case also proves it cannot put A over B.
+  const external = reloadChanged(NB);
+  await readAsked(NB);
+  const away = open(NA);
+  await readAsked(NA);
+  answerRead(NA, disk[NA], 42);
+  await away;
+  answerRead(NB, noteText('Nav B', 'changed outside'), 43);
+  t('a watcher read for a note left meanwhile is discarded', await external, false);
+  t('a delayed watcher read leaves the newly opened note active', store.path, NA);
+  t('a delayed watcher read leaves the newly opened document visible',
+    store.doc.elements[0].html, '<p>older selection</p>');
+
+  // A note can still be edited while the destination read is away. The current
+  // navigation settles that edit a second time before replacing the document.
+  api.read = path => path === NB
+    ? new Promise((resolve, reject) => reads.set(path, { resolve, reject }))
+    : Promise.resolve({ text: disk[path], mtime: 44 });
+  await open(NA);
+  const editWhileReading = open(NB);
+  await readAsked(NB);
+  edit('<p>typed while B was loading</p>');
+  answerRead(NB, disk[NB], 45);
+  await editWhileReading;
+  t('an edit made during navigation is saved before the note changes',
+    body(NA), 'typed while B was loading');
+  t('navigation after that save still opens its requested note', store.path, NB);
+
+  // Action-log reads are guarded by the same visit token. Path alone would not
+  // protect A → B → A, where the first and third visits have the same name.
+  const actionReads = new Map();
+  api.read = path => Promise.resolve({ text: disk[path], mtime: 46 });
+  api.actions = path => new Promise(resolve => actionReads.set(path, resolve));
+  await open(NA);
+  await open(NB);
+  const action = label => ({ id: label, label, at: 1, snap: JSON.stringify(store.doc) });
+  actionReads.get(NB)({ actions: [action('Latest action')] });
+  await tick();
+  t('the latest note receives its own delayed action log', store.actions[0].label, 'Latest action');
+  actionReads.get(NA)({ actions: [action('Stale action')] });
+  await tick();
+  t('a superseded action-log response cannot enter the latest note',
+    store.actions.map(a => a.label).join('|'), 'Latest action');
+
   // Let the action log's debounce fire into the stub, so no beacon carrying a
   // test path is left queued for when this page closes.
   await new Promise(r => setTimeout(r, 1700));

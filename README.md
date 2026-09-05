@@ -53,6 +53,24 @@ the assignments also live in `notes/.paper.json`.
 The project is a git repository, so `git log` is the long-term history and
 `notes/.history/` is the ten-minute one.
 
+### Order, and the archive
+
+Drag a folder or a page up and down its own column to put it where you want
+it; a line shows where it will land. What you arrange is remembered in
+`notes/.paper.json` and is the order the sidebar comes back with, on the next
+reload and on the next machine. Anything you have never moved — a folder made
+this morning, a `.md` file dropped into `notes/` from somewhere else — sorts by
+name after the ones you have.
+
+Below the first column sits **Archive**, shut until you click it and then
+opening upwards over at most half the column. Drag a folder onto it to put the
+folder away: nothing moves on disk, and the folder still opens, holds its
+colour and answers `[[links]]` — it is simply out of the first column. Drag it
+back out, or use the folder's own right-click menu, to bring it back.
+
+Archived pages are left out of search. The checkbox beside **Archive** puts
+them back in, and stays how you left it.
+
 ## The file format
 
 Each note is one Markdown file. YAML frontmatter holds the metadata and the
@@ -107,10 +125,15 @@ Element types: `text`, `box`, `line`, `ink`, `image`. Boxes take a `shape` of
 HTML appears (`<span style="color:…;font-size:20px">`), because Markdown has no
 syntax for them.
 
+Code blocks use fenced Markdown. Paper preserves their indentation, blank
+lines, trailing spaces, literal HTML characters and an optional simple language
+name such as `python`; when the code itself contains backticks, it writes a
+longer fence so the block still closes in the right place.
+
 Tables are GFM pipe tables while they can be. A table carrying anything a pipe
-table cannot spell — merged cells, hidden rules, row numbers, a line colour,
-dragged column widths or row heights — is written as a raw HTML block instead,
-still legal Markdown and still readable:
+table cannot spell — including no header row, merged cells, hidden rules, row
+numbers, a line colour, dragged column widths or row heights — is written as a
+raw HTML block instead, still legal Markdown and still readable:
 
 ```html
 <table data-numbers="on" style="table-layout: fixed; width: 420px;">
@@ -161,7 +184,8 @@ scope storage                   risk NOT budget
 ```
 
 Lowercase `and` is just a word, so searching for `black and white` works.
-Terms behind a `NOT` are never highlighted.
+Terms behind a `NOT` are never highlighted. Folders in the archive are not
+searched unless the checkbox beside **Archive** says they are.
 
 ## Linking
 
@@ -263,8 +287,8 @@ server.py         REST API, static files, boolean search, backlinks — stdlib o
 app/index.html    the shell
 app/css/app.css   fonts, both palettes, then layout and canvas chrome
 app/js/app.js     the whole front end
-app/test.html     format round-trips and save-path tests — open it in the browser
-test_server.py    backend file tests — python3 test_server.py
+app/test.html     front-end regression suite — open it in the browser
+test_server.py    backend regression suite — python3 -m unittest -v test_server.py
 ```
 
 `app/js/app.js` is one file, but it is still built out of the same sections it
@@ -287,21 +311,36 @@ main            wiring: theme, note lifecycle, header, search, shortcuts
 cascade needs: the vendored `@font-face` rules, the theme custom properties,
 then everything that reads them.
 
-`app/test.html` is the front end's test suite, and it's the one that matters
-most: it
-asserts that HTML → Markdown → HTML and whole-file save → load are lossless,
-and that the store never books an edit as saved that a write did not carry.
-It imports the format helpers from `app/js/app.js`, which is why that file
-exports them and only wires up the UI when a canvas is actually on the page;
-the store tests come in through the same door, and run against stub API
-responses that can be held open, so they never touch the notebook. Open
-<http://127.0.0.1:8420/test.html> after changing the format or store sections.
+`app/test.html` is the front-end regression suite. It covers format and
+whole-file round trips, timeout-isolated parsing, merged-table edits, save and
+file-lifecycle timing, and stale navigation responses. It imports the shipped
+helpers and store from `app/js/app.js`; the store runs against controlled API
+promises and in-memory browser storage, so it never changes the notebook,
+notebook metadata, or the app's normal browser storage. Start Paper and open
+<http://127.0.0.1:8420/test.html>. The heading and tab title must report the
+full result: `214 passed, 0 failed`.
 
 `test_server.py` covers what a browser cannot see: it runs the real handler over
 HTTP against a throwaway notebook in a temporary directory — your own notes are
 never opened — and asserts that renaming or moving a note carries its own images
-and only its own. Run `python3 test_server.py` after changing `server.py`; it
-prints `OK` and needs nothing installed.
+and only its own, and that the versions and action steps kept for it come along
+still pointing at the files those images are now. It also fault-injects failed
+atomic replacements, checks that readers see only complete files, and verifies
+that overlapping metadata changes are serialized. It also covers the sidebar
+order and the archive: that a dragged order outlives the process that saved it,
+that renaming or trashing something keeps its place or forgets it, and that an
+archived folder stays out of search until it is asked for. Run
+`python3 -m unittest -v test_server.py` after changing `server.py`; the expected
+result is all 28 tests passing followed by `OK`. It needs nothing installed.
+
+For a final release check, run both suites, then run:
+
+```sh
+python3 -m py_compile server.py test_server.py
+git diff --check
+```
+
+Both commands should finish silently with exit status 0.
 
 `window.wb` is exposed in the console (`wb.store.doc`, `wb.canvas.selected()`).
 
@@ -325,6 +364,12 @@ Every ten minutes of editing, the previous contents of a note are kept in
 sidebar and choose **Version history…** to see them and roll one back; the
 state you were in is always snapshotted first, so a restore is itself
 undoable.
+
+Renaming or moving a note takes its history with it, and brings it into step:
+the images that moved with the note and the title that followed its filename
+are rewritten in every kept version and every step on the History page — and in
+the undo stacks still held in memory — so restoring something from before the
+rename never lands on a picture that is no longer there.
 
 ## Known edges
 

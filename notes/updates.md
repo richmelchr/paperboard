@@ -457,8 +457,8 @@ image work is untouched here.
 
 ## 7. P2 — History restoration after rename breaks image references
 
-Status: \[ \] Open. Snapshot restoration case reproduced against the real
-backend; action-history exposure confirmed by its stored snapshots.
+Status: \[x\] Fixed 04SEP2026. Reproduced against the real backend and through
+the real store, then fixed and re-verified.
 
 Locations: server.py rewrite\_renamed\_note() around 125, rename/move history
 transfer around 638, restore copy around 677; app/js/app.js M\_store action
@@ -486,9 +486,72 @@ Acceptance checks:
 - Repeated renames, destination-name collisions, and undo/redo do not break asset references.
 - Pre-restore state remains recoverable.
 
+Implemented 04SEP2026. Item 4 already worked out which images a rename moves and
+what it renamed them to; this carries that answer through to everything that
+remembers what the note used to say, rather than redesigning asset naming a
+second time.
+
+server.py: `move_images()` returns {old name: new name}, and the rename handler
+now keeps that map and passes it on. The title rewrite has been lifted out of
+`rewrite_renamed_note()` into `retitled()`, so a stored version can be brought
+forward exactly the way the live note is. The new `migrate_history()` runs after
+`move_history()`, over the history folder that has just followed the note: every
+kept `.md` version is retitled and its image references rewritten with
+`apply_image_renames()`, and `migrate_actions()` does the same for the action
+log's snapshots. Those are whole documents stored as JSON, so they are parsed
+and walked (`retarget_snap()`) rather than string-substituted — inside JSON the
+quotes of `src="images/x"` are escaped, and text substitution would miss them —
+and each document's `meta.title` is set to the new stem. A version is written
+back only if it changed, and its mtime is restored afterwards with `os.utime()`:
+`versions_of()` orders the History page by when a snapshot was taken, so
+restamping the files would have shuffled it.
+
+app/js/app.js: `/api/rename` now answers with `images` and `title` as well as
+`path`, and `moveFile()` uses them to bring the undo stacks held in memory
+forward the same way — the live `store.history`, the stack parked under the old
+path, `store.actions`, and any action log still queued for writing. `retarget()`
+mirrors the server's reference rule (`src: images/x`, `src="images/x"`,
+`](images/x)`, longest filename first); `moved()` parses a snapshot, walks it,
+and retitles it. `title` is sent only when the thing that moved was a note, so a
+folder rename — where the notes inside keep their names and their references —
+carries nothing.
+
+Verified 04SEP2026:
+
+- Six backend regressions added to test_server.py, which now reports Ran 13
+  tests, OK: a version and an action step saved before a rename both point at
+  the moved image and carry the new title; a move whose destination already
+  holds that filename ends up on the free name it actually took; repeated
+  renames stay in step; rewriting versions does not reorder the History page
+  (their mtimes are deliberately set out of step with their filenames first);
+  and a folder rename leaves its notes' history alone. Against the pre-fix
+  server.py five of the six fail and the folder control passes.
+- Five checks added to app/test.html's store section, which reports 161 passed,
+  1 failed in headless Chrome — the failure is the known worker-under-virtual-
+  clock timeout from item 4, unrelated and present before this change. Against
+  the pre-fix app.js four of the five new checks fail; the fifth (prose naming a
+  path is left alone) passes either way, as it should.
+- A copy of the real notebook, served on port 18420: updates.md has 22 kept
+  versions, five of which reference images/updates1.png although the current
+  note does not. Renaming it to `release notes.md` left the version order
+  unchanged, retitled every version, and left those five pointing at
+  images/updates1.png — which is right, because an image the note no longer
+  references is not moved. /api/image-path resolves it, restoring one of those
+  versions brings the picture back, and the tree still lists and opens the rest
+  of the notebook. That server was stopped and the copy deleted.
+- python3 -m py\_compile server.py and git diff --check pass.
+
+Limitations: history is migrated with the renames the current note produced, so
+an image only an old version referenced stays where it is under its old name —
+still valid, because nothing moved it, but it will not follow the note. A note
+whose images live through a `..` or subfolder path is outside what
+`move_images()` sees, as before. Notes trashed and restored by hand are not
+migrated; only rename and move are.
+
 ## 8. P2 — Older navigation response can replace the latest selection
 
-Status: \[ \] Open. Reproduced with controlled read promises.
+Status: \[x\] Fixed 04SEP2026. Reproduced with controlled read promises, then
+fixed and re-verified.
 
 Location: app/js/app.js M\_store.open() around line 1211; main go() and
 external-change reloads need compatible identity guards.
@@ -513,9 +576,53 @@ Acceptance checks:
 - A delayed external-change read cannot replace a different note opened meanwhile.
 - Dirty-note navigation still preserves pending edits.
 
+Implemented 04SEP2026 in app/js/app.js M\_store.open(), loadActions(), the new
+reloadChanged(), startWatching(), and M\_main.go().
+
+Every open request now receives an increasing navigation token. It checks that
+token after settling the current note, after its read returns, and again after a
+second settlement immediately before applying the result. That last settlement
+matters because the old document remains editable while the destination read is
+away: an edit made in that interval is written before the document can be
+replaced. An older success returns false without changing the store; an older
+failure does the same, leaving only the current request able to show an error.
+loadActions() carries the same token, so an A → B → A sequence cannot merge the
+first visit's delayed action log into the second visit.
+
+go() changes the sidebar and refreshes links only when open() reports that its
+request actually won, and points the tree at store.path rather than at a stale
+caller's argument. The header, document, undo history, actions, save metadata,
+and remembered last page are all changed inside the same guarded open commit.
+
+The watcher now delegates to reloadChanged(). Before reading it captures the
+navigation token, path, mtime and saved text; after the await it also requires
+the note still to be clean and every captured value still to match. A response
+from an earlier visit, or from before a local save, is therefore harmless even
+when its path happens to match again.
+
+Verified 04SEP2026:
+
+- Fifteen deterministic regressions added to app/test.html under "Navigation
+  ordering", with api.read promises resolved and rejected in controlled order.
+  They cover reversed A/B completion, a stale error after a newer success, a
+  watcher response after navigating away, document/save metadata/localStorage
+  consistency, delayed action logs, and an edit typed while the destination was
+  loading. The full suite in Chrome reports 185 passed, 0 failed.
+- The existing dirty-note switch test still proves work pending before a click
+  reaches disk, while the new mid-read test proves work typed after the click
+  reaches disk before the requested page replaces it.
+- python3 test\_server.py reports Ran 13 tests, OK; python3 -m py\_compile
+  server.py and git diff --check pass. No backend behavior changed for this item.
+
+Limitation: superseded network reads are not aborted; they are allowed to finish
+and their results are discarded. This avoids coupling the store to a particular
+request implementation and keeps cancellation from interfering with required
+saves.
+
 ## 9. P2 — Headerless tables regain a header after reopening
 
-Status: \[ \] Open. Reproduced through HTML-to-Markdown-to-HTML conversion.
+Status: \[x\] Fixed 04SEP2026. Reproduced through
+HTML-to-Markdown-to-HTML conversion, then fixed and re-verified.
 
 Locations: app/js/app.js M\_format.isComplexTable() around 566 and tableToMd()
 around 609.
@@ -539,9 +646,37 @@ Acceptance checks:
 - Header on still round-trips and simple compatible tables remain pipe tables.
 - Row content, formatting, and section structure are retained.
 
+Implemented 04SEP2026 in app/js/app.js M\_format.isComplexTable(). The
+serializer now treats a table whose first row begins with a `td` as structure
+that pipe Markdown cannot represent. It writes that table through the existing
+raw-HTML path, including its `thead`/`tbody` sections and cell HTML, instead of
+inventing the pipe divider that made row one a header on the next read. Tables
+whose first row is a real `th` header remain in the compact pipe format when
+they carry no other complex state. README now lists a missing header among the
+table states that require raw HTML.
+
+Verified 04SEP2026:
+
+- Six assertions were added to app/test.html and the old lossy expectation for
+  a literal pipe inside a headerless cell was corrected. Together they cover
+  raw-HTML selection, a two-row headerless round trip with bold and italic cell
+  content, whole-note serialization, the real Header toggle remaining off
+  after that file trip, and a compatible header table remaining a pipe table
+  and round-tripping.
+- The complete Chrome suite reports 191 passed, 0 failed, with no console
+  warnings or errors.
+- python3 test\_server.py reports Ran 13 tests, OK; python3 -m py\_compile
+  server.py and git diff --check pass. No backend behavior changed for this
+  item.
+
+Limitation: headerless tables are deliberately more verbose on disk than simple
+header tables because standard pipe-table syntax has no header-off form. They
+remain readable, legal Markdown HTML blocks.
+
 ## 10. P2 — Code blocks do not round-trip
 
-Status: \[ \] Open. Reproduced through the real format helpers.
+Status: \[x\] Fixed 04SEP2026. Reproduced through the real format helpers and
+covered by focused round-trip regressions.
 
 Locations: app/js/app.js M\_format.blocksToMd() around 518 (pre handling) and
 mdToHtml() around 349.
@@ -567,10 +702,38 @@ Acceptance checks:
 - Markdown-looking content inside code is not interpreted as headings, lists, or tables.
 - The writer and reader agree on fence delimiters and supported language metadata.
 
+Implemented 04SEP2026 in app/js/app.js M\_format. mdToHtml() now recognizes
+backtick and tilde fences before any other block syntax, escapes their contents
+into `pre`, and carries a simple language info string as `language-*` on a
+nested `code` element. Paragraph parsing also stops at a fence, so a code block
+can interrupt prose without its opening marker being swallowed.
+
+The writer now chooses a backtick fence longer than every backtick run in the
+code. It no longer drops a trailing newline from `pre`, and its Markdown cleanup
+skips fenced bodies, so indentation, trailing spaces and repeated blank lines
+are not normalized away. The closing delimiter's required newline remains
+syntax rather than becoming code; an intentional final newline is represented
+by a blank code line before it.
+
+Verified 04SEP2026:
+
+- Eleven assertions were added to app/test.html for multiline code, indentation,
+  blank lines, trailing spaces, literal HTML, Markdown-looking text, embedded
+  triple backticks, tilde fences, language metadata and whole-note persistence.
+- The complete Chrome suite reports 202 passed, 0 failed (was 191), with no
+  console warnings or errors.
+- python3 test\_server.py reports Ran 13 tests, OK; python3 -m py\_compile
+  server.py test\_server.py and git diff --check pass. No backend behavior
+  changed for this item.
+
+Limitation: Paper preserves one simple language token made of letters, digits,
+underscore, plus, dot or hyphen. More elaborate Markdown fence info strings are
+accepted as code blocks but are not retained as editable HTML metadata.
+
 ## 11. P2 — Make persistent writes atomic
 
-Status: \[ \] Open. Durability improvement from code inspection; interruption
-was not fault-injected during review.
+Status: \[x\] Fixed 04SEP2026. The review's interruption risk is now covered by
+fault injection against the real note endpoint.
 
 Locations: server.py /api/note around line 596, save\_meta(), write\_actions(),
 rewrite\_renamed\_note(), and /api/restore.
@@ -596,14 +759,57 @@ Acceptance checks:
 - Temporary files do not appear in navigation or accumulate after failures.
 - Do not claim atomic replacement alone fixes concurrent update ordering.
 
+Implemented 04SEP2026 in server.py: `atomic_replace()`,
+`atomic_write_bytes()`, `atomic_write_text()`, `atomic_copyfile()`,
+`update_meta()` and the persistent mutation routes.
+
+Every file-content write now goes to a hidden temporary sibling first. Paper
+flushes and fsyncs that complete file, calls `os.replace()` only after the write
+succeeds, and best-effort fsyncs the parent directory. The old destination is
+therefore untouched if writing or replacement fails, and the `finally` cleanup
+removes the temporary file. Existing destination permissions are retained.
+This path covers notes, created note templates, metadata, action logs, version
+snapshots, restore copies, note/history rewrites after rename, image uploads and
+copied shared images.
+
+A process-wide reentrant mutation lock keeps compound note snapshot/write,
+create, rename/move, delete and restore sequences from interleaving. Metadata
+field changes use one locked read-modify-write through `update_meta()`, so a
+simultaneous colour and emoji change cannot each save a stale copy of the
+sidecar and erase the other field.
+
+Verified 04SEP2026:
+
+- Three backend regressions were added to test_server.py. A simulated
+  `os.replace()` failure on the real `/api/note` endpoint returns 500 while the
+  prior note remains byte-for-byte current and its hidden temporary sibling is
+  removed. A held replacement exposes the complete old file until the instant
+  the complete new one lands, with the temporary sibling absent from
+  `build_tree()`. A controlled pair of metadata updates proves the second
+  mutator cannot enter until the first has saved; both fields remain afterward.
+- `python3 test_server.py` reports Ran 16 tests, OK. Its existing rename,
+  snapshots and restore recovery checks all still pass, including the forced
+  pre-restore version and restoring the selected historical contents.
+- The complete isolated Chrome suite reports 202 passed, 0 failed, with no
+  console warnings or errors. `python3 -m py_compile server.py test_server.py`
+  and `git diff --check` pass.
+
+Limitation: the lock serializes filesystem mutation inside this server process,
+but it is not a document revision protocol. A separate client that deliberately
+sends an older full-note body after a newer one can still make that later
+request win. Paper's browser prevents its own stale save ordering with the
+queued, revision-aware store work from item 1; atomic replacement itself is not
+claimed to solve that problem. Parent-directory fsync is best effort because
+some filesystems do not support it.
+
 ## 12. P3 — Expand regression coverage beyond format happy paths
 
-Status: \[ \] Open. Add focused tests alongside fixes; finish the coverage audit
-afterward.
+Status: \[x\] Fixed 04SEP2026. Focused tests were added with items 1–11; the
+integrated coverage and isolation audit is complete.
 
-Location: app/test.html is currently the only checked-in suite and passed all 81
-assertions despite the reproduced defects. README describes this suite as the
-only one that matters; update that claim when expanding coverage.
+Review baseline: app/test.html was the only checked-in suite and passed all 81
+assertions despite the reproduced defects. README described it as the only one
+that mattered; that claim needed updating when coverage expanded.
 
 Implementation direction: retain useful format round trips, then add
 deterministic store timing tests, parser timeout protection, merged-table
@@ -620,6 +826,45 @@ Acceptance checks:
 - Document simple commands/URLs and expected results in README.
 - Run the full relevant suite once after integration and record the results here.
 
+Implemented 04SEP2026 in app/test.html, app/js/app.js, test_server.py and
+README.md.
+
+The checked-in coverage now follows the defects rather than only the format's
+happy path. Items 1, 2 and 8 use controlled promises around the real store to
+hold writes, reads and lifecycle calls in the exact problematic order. Item 3
+runs the shipped parser in a Web Worker with a three-second deadline. Items 5,
+6, 9 and 10 drive the real table and format helpers through structural edits
+and complete note-file round trips. Items 4, 7 and 11 run the real HTTP handler
+against a new temporary notebook for every test, including image/history
+migrations and fault-injected atomic replacements.
+
+The browser store suite no longer touches the notebook origin's real
+localStorage, even temporarily. M_store now has a narrow useStorage() test seam,
+and app/test.html installs a fresh in-memory Storage-shaped object before its
+first store operation. Its API endpoints remain controlled stubs and its fake
+paths never reach a mutating server endpoint. The backend suite continues to
+replace NOTES, META_FILE and HISTORY with paths under a temporary directory in
+setUp(), then restores the globals and removes that directory in tearDown().
+
+README now treats both checked-in suites as release checks, gives the browser
+URL and backend command, states their expected results, and includes the source
+compilation and whitespace checks.
+
+Verified 04SEP2026:
+
+- Browser at http://127.0.0.1:18420/test.html: 202 passed, 0 failed; tab title
+  PASS 202; no console warnings or errors. The page imports the current
+  app/js/app.js, and the local server was stopped after the run.
+- `python3 -m unittest -v test_server.py`: all 16 tests passed, followed by OK.
+  Every test used a throwaway notebook; personal notes and metadata were not
+  opened or changed.
+- `python3 -m py_compile server.py test_server.py` and `git diff --check` both
+  completed with exit status 0.
+
+Remaining limitation: app/test.html is intentionally a browser page rather
+than a headless command, because its parser worker and DOM/table behavior rely
+on browser APIs. The result is explicit in both the page heading and tab title.
+
 ## Completion notes
 
 For each implemented item, record the date, changed functions/files, behavior
@@ -627,3 +872,31 @@ now guaranteed, tests run, and any remaining limitation. Keep this review's
 reproduction context available until the final release checks are complete. Do
 not mark code-inspected risks as experimentally reproduced without running their
 checks.
+
+
+## Follow-up fixes from implementation review — 04SEP2026
+
+Implemented the four remaining findings in items 1, 2 and 7. This entry
+supersedes those items' earlier limitations about edits during a rename and
+images referenced only by historical versions.
+
+- Save settling now drains until the document is clean instead of returning
+  after three writes. Navigation preserves edits arriving during successive
+  in-flight saves; failed writes still prevent navigation.
+- Rename, move, trash and restore now lock input before settling pending work.
+  Older navigation reads are invalidated, concurrent navigation/mutations are
+  rejected, and the editor stays inert until a moved/restored note is reloaded.
+  Failed mutations release the lock without changing the active note identity.
+- Image retargeting now handles structured canvas `src` fields in both browser
+  undo/action history and server action snapshots, as well as embedded HTML.
+- Image ownership includes version snapshots and action history. Historical
+  images follow a note across folders, destination collisions preserve both
+  files, and another note's historical references keep a shared source copy.
+
+Verification: 214 browser assertions passed with zero failures; all 28 isolated
+backend tests passed. New regressions cover more than three dirty revisions,
+input blocking and failed-rename recovery, canvas-image history, historical
+image moves with destination collisions, and peer history retaining a shared
+image. The real title-rename workflow was exercised on a disposable notebook.
+Python compilation and git diff --check passed. Personal notes were not used
+for mutation testing.

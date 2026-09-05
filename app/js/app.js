@@ -115,7 +115,10 @@ const M_api = (() => {
     remove:    path             => post('/api/delete', { path }),
     setColor:  (path, color)    => post('/api/color', { path, color }),
     setEmoji:  (path, emoji)    => post('/api/emoji', { path, emoji }),
-    search:    text             => req('/api/search?' + q({ q: text })),
+    setOrder:  (parent, paths)  => post('/api/order', { parent, paths }),
+    setArchived: (path, archived) => post('/api/archive', { path, archived }),
+    search:    (text, archived) => req('/api/search?' + q(archived ? { q: text, archived: 1 }
+                                                                  : { q: text })),
     links:     ()               => req('/api/links'),
     history:   path             => req('/api/history?' + q({ path })),
     actions:   path             => req('/api/actions?' + q({ path })),
@@ -409,6 +412,25 @@ const M_format = (() => {
   const isTableStart = (lines, i) => /^\s*\|/.test(lines[i] || '') &&
     /^\s*\|?[\s:|-]*-[\s:|-]*\|/.test(lines[i + 1] || '');
 
+  /** A CommonMark-style opening fence. Paper keeps one optional, simple
+   *  language name; other info-string syntax remains code, but is not attached
+   *  to the editable HTML because there is nowhere lossless to store it. */
+  function fenceStart(line) {
+    const m = /^( {0,3})(`{3,}|~{3,})(.*)$/.exec(line || '');
+    if (!m) return null;
+    const info = m[3].trim();
+    if (m[2][0] === '`' && info.includes('`')) return null;
+    return {
+      mark: m[2][0], length: m[2].length,
+      language: /^[A-Za-z0-9_+.-]+$/.test(info) ? info : '',
+    };
+  }
+
+  const fenceClose = (line, fence) => {
+    const m = /^ {0,3}(`+|~+)[ \t]*$/.exec(line || '');
+    return !!m && m[1][0] === fence.mark && m[1].length >= fence.length;
+  };
+
   function mdToHtml(md) {
     const lines = String(md || '').replace(/\r\n/g, '\n').split('\n');
     const out = [];
@@ -417,6 +439,18 @@ const M_format = (() => {
       const line = lines[i];
       if (!line.trim()) { i++; continue; }
 
+      const fence = fenceStart(line);
+      if (fence) {
+        const body = [];
+        i++;
+        while (i < lines.length && !fenceClose(lines[i], fence)) body.push(lines[i++]);
+        if (i < lines.length) i++;                  // consume the closing fence
+        const code = escHtml(body.join('\n'));
+        out.push(fence.language
+          ? `<pre><code class="language-${escAttr(fence.language)}">${code}</code></pre>`
+          : `<pre>${code}</pre>`);
+        continue;
+      }
       if (/^\s*<table[\s>]/i.test(line)) {
         const buf = [];
         while (i < lines.length) {
@@ -449,7 +483,8 @@ const M_format = (() => {
       let para = '';
       const from = i;
       while (i < lines.length && lines[i].trim() && !ITEM.test(lines[i]) &&
-             !/^(#{1,6}\s|\s*>)/.test(lines[i]) && !isTableStart(lines, i)) {
+             !/^(#{1,6}\s|\s*>)/.test(lines[i]) && !fenceStart(lines[i]) &&
+             !isTableStart(lines, i)) {
         const piece = inlineToHtml(lines[i]);
         if (para && !/<br>$/.test(para)) para += ' ';
         para += piece;
@@ -579,7 +614,45 @@ const M_format = (() => {
     const root = document.createElement('div');
     if (html instanceof Node) root.append(...[...html.childNodes].map(n => n.cloneNode(true)));
     else root.innerHTML = String(html ?? '');
-    return blocksToMd(root).replace(/[ \t]+$/gm, '').replace(/\n{3,}/g, '\n\n').trim();
+    return cleanMarkdown(blocksToMd(root));
+  }
+
+  /** Apply the usual source cleanup only outside fenced code. Global regexes
+   *  would otherwise erase trailing spaces and collapse blank lines in code. */
+  function cleanMarkdown(source) {
+    const out = [];
+    let fence = null, blanks = 0;
+    for (const raw of String(source).replace(/\r\n?/g, '\n').split('\n')) {
+      if (fence) {
+        out.push(raw);
+        if (fenceClose(raw, fence)) fence = null;
+        continue;
+      }
+      const line = raw.replace(/[ \t]+$/, '');
+      const opening = fenceStart(line);
+      if (!line) { blanks++; continue; }
+      if (out.length && blanks) out.push('');
+      blanks = 0;
+      out.push(line);
+      if (opening) fence = opening;
+    }
+    return out.join('\n');
+  }
+
+  /** Fence longer than every backtick run in the code, so even a literal
+   *  triple-backtick line cannot close the block early. A trailing newline in
+   *  the DOM becomes a deliberate blank line before the closing fence. */
+  function preToMd(pre) {
+    const code = pre.textContent.replace(/\r\n?/g, '\n');
+    const runs = code.match(/`+/g) || [];
+    const width = Math.max(3, ...runs.map(run => run.length + 1));
+    const fence = '`'.repeat(width);
+    const child = pre.children.length === 1 && pre.firstElementChild?.tagName === 'CODE'
+      ? pre.firstElementChild : null;
+    const language = child && [...child.classList]
+      .map(name => /^language-([A-Za-z0-9_+.-]+)$/.exec(name)?.[1])
+      .find(Boolean) || '';
+    return fence + language + '\n' + code + '\n' + fence;
   }
 
   function blocksToMd(parent) {
@@ -602,7 +675,7 @@ const M_format = (() => {
         if (t) out += '#'.repeat(Math.min(+tag[1], 3)) + ' ' + t + '\n\n';
         continue;
       }
-      if (tag === 'pre') { out += '```\n' + n.textContent.replace(/\n$/, '') + '\n```\n\n'; continue; }
+      if (tag === 'pre') { out += preToMd(n) + '\n\n'; continue; }
       if (tag === 'br') { out += '\n'; continue; }
       if (tag === 'hr') { out += '---\n\n'; continue; }
       if (hasBlockKids(n)) { out += blocksToMd(n); continue; }
@@ -627,10 +700,13 @@ const M_format = (() => {
     return out;
   }
 
-  /** A pipe table can spell out a plain grid of text and nothing else, so any
-   *  table carrying structure or styling — merged cells, hidden rules, row
-   *  numbers, a line colour, dragged column widths — goes out as raw HTML. */
+  /** A pipe table can spell out a plain grid with a header and nothing else,
+   *  so any table carrying different structure or styling — no header, merged
+   *  cells, hidden rules, row numbers, a line colour, dragged column widths —
+   *  goes out as raw HTML. Pipe Markdown always promotes row one to a header,
+   *  so it cannot represent the Header-off state without changing the table. */
   const isComplexTable = table =>
+    table.querySelector('tr')?.children[0]?.tagName !== 'TH' ||
     table.dataset.borders === 'off' ||
     table.dataset.numbers === 'on' ||
     !!table.getAttribute('style') ||
@@ -646,11 +722,12 @@ const M_format = (() => {
   };
 
   /**
-   * Merged cells and borderless tables have no pipe-table spelling, so those are
-   * written as a raw HTML block — still a legal Markdown construct. The section
-   * split is written out too: drop the `<thead>` and the browser re-reads every
-   * row into one `<tbody>`, so the table that comes back is not the table that
-   * went out, and nothing downstream can tell the two states apart.
+   * Headerless, merged and borderless tables have no lossless pipe-table
+   * spelling, so those are written as a raw HTML block — still a legal Markdown
+   * construct. The section split is written out too: drop the `<thead>` and the
+   * browser re-reads every row into one `<tbody>`, so the table that comes back
+   * is not the table that went out, and nothing downstream can tell the two
+   * states apart.
    */
   function tableToHtml(table) {
     const cell = c => {
@@ -1252,6 +1329,11 @@ const M_store = (() => {
   const { parseNote, serializeNote, blankDoc } = M_format;
   const { stamp, debounce, stemOf, toast } = M_util;
 
+  // Kept behind this tiny seam so app/test.html can exercise the real store
+  // without writing fake note paths into the notebook origin's localStorage.
+  let storage = localStorage;
+  const useStorage = area => { storage = area; };
+
   const listeners = {};
   const on = (evt, fn) => (listeners[evt] ||= []).push(fn);
   const fire = (evt, ...a) => (listeners[evt] || []).forEach(f => f(...a));
@@ -1270,6 +1352,7 @@ const M_store = (() => {
     doc: blankDoc('Untitled'),
     savedText: '',
     dirty: false,
+    mutating: false,
     history: [],
     index: -1,
     coalesceUntil: 0,
@@ -1299,41 +1382,70 @@ const M_store = (() => {
 
   // ── loading ───────────────────────────────────────────────────────────────
 
-  async function open(path) {
-    await settleSaves();
-    stale = false;                       // whatever moved under us, we re-read it
-    flushActions.flush();                              // park the old note's log
-    if (store.path && store.history.length) {
-      parked.delete(store.path);                     // re-insert to keep it recent
-      parked.set(store.path, { history: store.history, index: store.index });
-      while (parked.size > KEEP_HISTORIES) parked.delete(parked.keys().next().value);
-    }
-    const { text, mtime } = await api.read(path);
-    store.path = path;
-    store.doc = parseNote(text, stemOf(path));
-    store.savedText = text;
-    store.savedContentKey = contentKey(store.doc);
-    store.mtime = mtime;
-    store.dirty = false;
-    store.coalesceUntil = 0;
-    store.actions = [];
-    fire('actions');
-    loadActions(path);
+  /**
+   * Every request to open a note supersedes the one before it. A path check is
+   * not enough here: A → B → A can leave the first A read arriving after the
+   * second, with the same path but older text and metadata.
+   */
+  let navigation = 0;
+  const isCurrentNavigation = (token, path) =>
+    token === navigation && (!path || store.path === path);
 
-    const previous = parked.get(path);
-    if (previous) {
-      store.history = previous.history;
-      store.index = previous.index;
-      // The file may have moved on since; make the current state the newest step.
-      if (store.history[store.index]?.snap !== JSON.stringify(store.doc)) pushSnapshot(null);
-    } else {
-      store.history = [];
-      store.index = -1;
-      pushSnapshot(null);
+  async function open(path) {
+    if (store.mutating) throw new Error("A file operation is still in progress");
+    const token = ++navigation;
+    try {
+      await settleSaves();
+      if (!isCurrentNavigation(token)) return false;
+
+      const { text, mtime } = await api.read(path);
+      if (!isCurrentNavigation(token)) return false;
+
+      // The old note remains editable while its replacement is being read. If
+      // something was typed in that interval, it still has to reach disk before
+      // this request is allowed to replace the document.
+      await settleSaves();
+      if (!isCurrentNavigation(token)) return false;
+
+      stale = false;                     // whatever moved under us, we re-read it
+      flushActions.flush();                            // park the old note's log
+      if (store.path && store.history.length) {
+        parked.delete(store.path);                   // re-insert to keep it recent
+        parked.set(store.path, { history: store.history, index: store.index });
+        while (parked.size > KEEP_HISTORIES) parked.delete(parked.keys().next().value);
+      }
+      store.path = path;
+      store.doc = parseNote(text, stemOf(path));
+      store.savedText = text;
+      store.savedContentKey = contentKey(store.doc);
+      store.mtime = mtime;
+      store.dirty = false;
+      store.coalesceUntil = 0;
+      store.actions = [];
+      fire('actions');
+      loadActions(path, token);
+
+      const previous = parked.get(path);
+      if (previous) {
+        store.history = previous.history;
+        store.index = previous.index;
+        // The file may have moved on since; make the current state the newest step.
+        if (store.history[store.index]?.snap !== JSON.stringify(store.doc)) pushSnapshot(null);
+      } else {
+        store.history = [];
+        store.index = -1;
+        pushSnapshot(null);
+      }
+      loadInto(store.doc);
+      fire('state');
+      storage.setItem('wb:last', path);
+      return true;
+    } catch (error) {
+      // A failure from a request the user has already replaced is no longer the
+      // result of their navigation. The current request owns any visible error.
+      if (!isCurrentNavigation(token)) return false;
+      throw error;
     }
-    loadInto(store.doc);
-    fire('state');
-    localStorage.setItem('wb:last', path);
   }
 
   // ── history ───────────────────────────────────────────────────────────────
@@ -1464,10 +1576,10 @@ const M_store = (() => {
     flushActions();
   }
 
-  async function loadActions(path) {
+  async function loadActions(path, token = navigation) {
     try {
       const { actions } = await api.actions(path);
-      if (store.path !== path) return;                  // switched away while waiting
+      if (!isCurrentNavigation(token, path)) return;    // switched away while waiting
       const stored = (actions || []).filter(a => a && a.id && a.label && a.snap);
       // Anything logged while the fetch was in flight belongs after what was saved.
       store.actions = [...stored, ...store.actions];
@@ -1584,8 +1696,11 @@ const M_store = (() => {
    * caller about to navigate away stops instead of walking off with the edits.
    */
   async function settleSaves() {
-    for (let i = 0; store.dirty && !stale && i < 3; i++) await saveNow();
-    await queue;
+    do {
+      await queue;
+      if (!store.dirty || stale) return;
+      await saveNow();
+    } while (store.dirty && !stale);
   }
 
   /** Mark view-only changes (pan/zoom) — persisted, but never bump `modified`. */
@@ -1617,11 +1732,79 @@ const M_store = (() => {
    */
   let stale = false;
 
+  // Lock input before settling, through the filesystem mutation. The editor
+  // stays inert until a moved/restored document has been read back successfully.
+  const editingBlocked = () => store.mutating || stale;
+  for (const type of ['beforeinput', 'keydown', 'paste', 'drop', 'pointerdown', 'click']) {
+    window.addEventListener(type, event => {
+      if (!store.mutating && !(stale && event.target?.closest?.('#editor'))) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
+
+  async function lifecycle(change) {
+    if (store.mutating) throw new Error('A file operation is still in progress');
+    store.mutating = true;
+    ++navigation;                     // invalidate reads started before the mutation
+    fire('state');
+    try { return await change(); }
+    finally { store.mutating = false; fire('state'); }
+  }
+
   /** Everything the open note owes the disk — its text and its action log. */
   async function settle() {
     flushActions.flush();
     await settleSaves();
     await actionWrite;
+  }
+
+  // A real reference to a sibling image — `src: images/x`, `src="images/x"` or
+  // `](images/x)` — the same three shapes the server recognises. Prose that
+  // merely names a path is not one.
+  const IMG_REF = /(?:\bsrc\s*[:=]\s*|\]\(\s*)["']?images\//g;
+
+  /**
+   * Point an image reference at the file it is now. Names are tried longest
+   * first, so `images/A11.png` is read as A11.png and never as A1.png with a
+   * stray "1" left after it.
+   */
+  function retarget(text, renames, names) {
+    if (typeof text !== 'string' || !names.length) return text;
+    let out = '', pos = 0;
+    IMG_REF.lastIndex = 0;
+    for (let m; (m = IMG_REF.exec(text));) {
+      const end = m.index + m[0].length;
+      const name = names.find(n => text.startsWith(n, end));
+      if (!name) continue;
+      out += text.slice(pos, end) + renames[name];
+      IMG_REF.lastIndex = pos = end + name.length;
+    }
+    return out + text.slice(pos);
+  }
+
+  const retargetDoc = (value, renames, names) =>
+    typeof value === 'string' ? retarget(value, renames, names)
+      : Array.isArray(value) ? value.map(v => retargetDoc(v, renames, names))
+      : value && typeof value === 'object'
+        ? Object.fromEntries(Object.entries(value)
+            .map(([k, v]) => [k, k === 'src' && typeof v === 'string' &&
+              v.startsWith('images/') && Object.hasOwn(renames, v.slice(7))
+                ? 'images/' + renames[v.slice(7)] : retargetDoc(v, renames, names)]))
+        : value;
+
+  /**
+   * A snapshot taken before a rename, as the note stands after it: the server
+   * moved the images and retitled the file, and a step restored from an undo
+   * stack must not put back the names those files had. Snapshots are documents
+   * stored as JSON; anything else is left exactly as it is.
+   */
+  function moved(snap, renames, names, title) {
+    let doc;
+    try { doc = JSON.parse(snap); } catch { return snap; }
+    doc = retargetDoc(doc, renames, names);
+    if (doc?.meta && typeof doc.meta.title === 'string') doc.meta.title = title;
+    return JSON.stringify(doc);
   }
 
   /**
@@ -1630,22 +1813,44 @@ const M_store = (() => {
    * thing that moved or lived inside it, the path it is now at.
    */
   async function moveFile(from, to) {
-    await settle();
-    const { path } = await api.rename(from, to);
-    for (const key of [...parked.keys()]) {
-      if (!under(key, from)) continue;
-      parked.set(rekeyed(key, from, path), parked.get(key));
-      parked.delete(key);
-    }
-    if (under(pendingActions?.path, from)) {
-      pendingActions.path = rekeyed(pendingActions.path, from, path);
-    }
-    if (!under(store.path, from)) return { path, active: null };
-    store.path = rekeyed(store.path, from, path);
-    stale = true;                        // the server rewrote it; read it again
-    localStorage.setItem('wb:last', store.path);
-    fire('state');
-    return { path, active: store.path };
+    return lifecycle(async () => {
+      await settle();
+      const { path, images, title } = await api.rename(from, to);
+      // What the server did to the note's images and title, so the snapshots
+      // held in memory can be brought forward with the ones it rewrote on disk.
+      const renames = images || {};
+      const names = Object.keys(renames).sort((a, b) => b.length - a.length);
+      // `title` is sent only when the thing that moved was a note; a folder
+      // rename leaves its notes' own names, and so their references, untouched.
+      const carry = typeof title === 'string'
+        ? (snap => moved(snap, renames, names, title)) : null;
+      for (const key of [...parked.keys()]) {
+        if (!under(key, from)) continue;
+        const stack = parked.get(key);
+        if (carry && key === from) {
+          stack.history = stack.history.map(e => ({ ...e, snap: carry(e.snap) }));
+        }
+        parked.set(rekeyed(key, from, path), stack);
+        parked.delete(key);
+      }
+      if (under(pendingActions?.path, from)) {
+        pendingActions.path = rekeyed(pendingActions.path, from, path);
+        if (carry && pendingActions.path === path) {
+          pendingActions.actions = pendingActions.actions
+            .map(a => ({ ...a, snap: carry(a.snap) }));
+        }
+      }
+      if (carry && store.path === from) {
+        store.history = store.history.map(e => ({ ...e, snap: carry(e.snap) }));
+        store.actions = store.actions.map(a => ({ ...a, snap: carry(a.snap) }));
+      }
+      if (!under(store.path, from)) return { path, active: null };
+      store.path = rekeyed(store.path, from, path);
+      stale = true;                        // the server rewrote it; read it again
+      storage.setItem('wb:last', store.path);
+      fire('state');
+      return { path, active: store.path };
+    });
   }
 
   /**
@@ -1654,13 +1859,15 @@ const M_store = (() => {
    * if the open document went with it, and is therefore no longer open.
    */
   async function trashFile(path) {
-    await settle();
-    await api.remove(path);
-    for (const key of [...parked.keys()]) if (under(key, path)) parked.delete(key);
-    if (under(pendingActions?.path, path)) { flushActions.cancel(); pendingActions = null; }
-    if (!under(store.path, path)) return false;
-    close();
-    return true;
+    return lifecycle(async () => {
+      await settle();
+      await api.remove(path);
+      for (const key of [...parked.keys()]) if (under(key, path)) parked.delete(key);
+      if (under(pendingActions?.path, path)) { flushActions.cancel(); pendingActions = null; }
+      if (!under(store.path, path)) return false;
+      close();
+      return true;
+    });
   }
 
   /**
@@ -1669,9 +1876,11 @@ const M_store = (() => {
    * and the work being stepped away from stays recoverable.
    */
   async function restoreFile(path, at) {
-    await settle();
-    await api.restore(path, at);
-    if (under(store.path, path)) stale = true;             // reopen to see it
+    return lifecycle(async () => {
+      await settle();
+      await api.restore(path, at);
+      if (under(store.path, path)) stale = true;             // reopen to see it
+    });
   }
 
   /**
@@ -1690,7 +1899,7 @@ const M_store = (() => {
     store.history = [];
     store.index = -1;
     store.actions = [];
-    localStorage.removeItem('wb:last');
+    storage.removeItem('wb:last');
     fire('actions');
     loadInto(store.doc);
     fire('state');
@@ -1701,6 +1910,28 @@ const M_store = (() => {
   let lastPoll = Date.now() / 1000;
   let lastCount = -1;
 
+  /** Reload the clean open note if this read still describes that exact visit. */
+  async function reloadChanged(path = store.path) {
+    if (!path || store.path !== path || !store.mtime || store.dirty) return false;
+    const token = navigation;
+    const mtime = store.mtime;
+    const savedText = store.savedText;
+    const fresh = await api.read(path);
+    if (!isCurrentNavigation(token, path) || store.dirty ||
+        store.mtime !== mtime || store.savedText !== savedText) return false;
+    if (fresh.text === savedText) return false;
+
+    const doc = parseNote(fresh.text, stemOf(path));
+    store.doc = doc;
+    store.savedText = fresh.text;
+    store.savedContentKey = contentKey(doc);
+    store.mtime = fresh.mtime;
+    pushSnapshot(null);
+    loadInto(doc);
+    toast('Reloaded — changed on disk');
+    return true;
+  }
+
   function startWatching(onStructureChange) {
     setInterval(async () => {
       try {
@@ -1709,16 +1940,7 @@ const M_store = (() => {
         if (count !== lastCount) { lastCount = count; onStructureChange(); }
         if (!changed.length) return;
         if (changed.includes(store.path) && store.mtime && !store.dirty) {
-          const fresh = await api.read(store.path);
-          if (fresh.text !== store.savedText) {
-            store.doc = parseNote(fresh.text, stemOf(store.path));
-            store.savedText = fresh.text;
-            store.savedContentKey = contentKey(store.doc);
-            store.mtime = fresh.mtime;
-            pushSnapshot(null);
-            loadInto(store.doc);
-            toast('Reloaded — changed on disk');
-          }
+          await reloadChanged(store.path);
         }
         onStructureChange();
       } catch { /* server restarting; try again next tick */ }
@@ -1740,7 +1962,7 @@ const M_store = (() => {
 
   return { on, store, open, commit, act, beginAction, logAction, revertTo, keyOfSnap,
     currentKey, undo, redo, canUndo, canRedo, saveNow, touchView, startWatching,
-    settle, moveFile, trashFile, restoreFile };
+    reloadChanged, settle, moveFile, trashFile, restoreFile, useStorage, editingBlocked };
 })();
 
 // ══ richtext ════════════════════════════════════════════════════════════════
@@ -3530,14 +3752,21 @@ const M_tree = (() => {
   let palette = [];
   let active = null;
   let selectedFolder = localStorage.getItem('wb:folder') || null;
+  let archiveOpen = localStorage.getItem('wb:archive') === 'open';
+  let searchArchive = localStorage.getItem('wb:archive-search') === 'on';
   let emojiFilter = null;
   let filterSet = null;
   let snippets = {};
   let terms = [];
   let onOpen = () => {};
   let onStructure = () => {};
+  let onScope = () => {};
 
   const rootFolders = () => root?.folders || [];
+  // Archived folders keep their place in the same ordered list the server
+  // sends; only which of the two drawers they are painted into differs.
+  const liveFolders = () => rootFolders().filter(f => !f.archived);
+  const archivedFolders = () => rootFolders().filter(f => f.archived);
   const folderByPath = path => rootFolders().find(f => f.path === path) || null;
 
   function allNotes() {
@@ -3573,7 +3802,7 @@ const M_tree = (() => {
     root = data.tree;
     palette = data.palette;
     if (selectedFolder && !folderByPath(selectedFolder)) rememberFolder(null);
-    if (!selectedFolder && !active && rootFolders().length) rememberFolder(rootFolders()[0].path);
+    if (!selectedFolder && !active && liveFolders().length) rememberFolder(liveFolders()[0].path);
     paint();
   }
 
@@ -3585,7 +3814,8 @@ const M_tree = (() => {
 
   function chooseVisibleFolder() {
     if (selectedFolder && folderVisible(folderByPath(selectedFolder) || { notes: [] })) return;
-    rememberFolder(rootFolders().find(folderVisible)?.path || null);
+    rememberFolder((liveFolders().find(folderVisible) ||
+                    archivedFolders().find(folderVisible))?.path || null);
   }
 
   function applyFilter(matches, matchTerms = []) {
@@ -3602,7 +3832,8 @@ const M_tree = (() => {
   function firstVisibleNote() {
     const inFolder = selectedFolder && folderByPath(selectedFolder)?.notes.find(noteVisible);
     return inFolder?.path || root?.notes.find(noteVisible)?.path ||
-           rootFolders().flatMap(f => f.notes).find(noteVisible)?.path || null;
+           [...liveFolders(), ...archivedFolders()]
+             .flatMap(f => f.notes).find(noteVisible)?.path || null;
   }
 
   const escapeHtml = t => t.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -3625,12 +3856,13 @@ const M_tree = (() => {
     rootHost.innerHTML = '';
     fileHost.innerHTML = '';
 
-    for (const folder of rootFolders()) {
+    for (const folder of liveFolders()) {
       if (folderVisible(folder)) rootHost.append(folderRow(folder));
     }
     for (const note of root.notes) {
       if (noteVisible(note)) rootHost.append(noteRow(note));
     }
+    paintArchive();
 
     const folder = selectedFolder && folderByPath(selectedFolder);
     if (folder) {
@@ -3646,15 +3878,38 @@ const M_tree = (() => {
       button.setAttribute('aria-pressed', String(button.dataset.emoji === emojiFilter)));
   }
 
+  /** The Archive drawer: shut by default, and only painted when it is open. */
+  function paintArchive() {
+    const box = $('#archive');
+    const host = $('#archive-list');
+    const folders = archivedFolders();
+    box.classList.toggle('open', archiveOpen);
+    box.classList.toggle('holds-active', folders.some(f => f.path === selectedFolder));
+    $('#archive-head').setAttribute('aria-expanded', String(archiveOpen));
+    $('#archive-count').textContent = folders.length || '';
+    $('#archive-search').checked = searchArchive;
+    host.hidden = !archiveOpen;
+    if (!archiveOpen) return;
+    host.innerHTML = '';
+    for (const folder of folders) if (folderVisible(folder)) host.append(folderRow(folder));
+    if (!host.children.length) {
+      host.append(el('div', { class: 'nav-empty' },
+        !folders.length ? 'Drag a folder here to put it away.'
+          : filterSet && !searchArchive ? 'Not searched — tick the box to include these.'
+          : 'No matching folders.'));
+    }
+  }
+
   function folderRow(folder) {
     const row = el('div', {
       class: 'row folder' + (folder.path === selectedFolder ? ' active-folder' : ''),
-      'data-path': folder.path, 'data-kind': 'folder',
+      draggable: 'true', 'data-path': folder.path, 'data-kind': 'folder',
       onclick: () => { rememberFolder(folder.path); paint(); },
       oncontextmenu: ev => { ev.preventDefault(); folderMenu(ev, folder); },
     },
       el('span', { class: 'chip', style: { background: folder.color } }),
       el('span', { class: 'label', style: { color: folder.color } }, folder.name));
+    wireDrag(row, 'folder', folder.path);
     wireFolderDrop(row, folder.path);
     return row;
   }
@@ -3675,28 +3930,119 @@ const M_tree = (() => {
     return row;
   }
 
-  // ── drag to move ────────────────────────────────────────────────────────
+  // ── drag to move, drag to reorder ───────────────────────────────────────
+  //
+  // Two kinds travel on the drag: a note, which can be dropped into a folder
+  // or between its siblings, and a folder, which can be dropped between its
+  // siblings or into the Archive. The kind is the MIME type, so a column only
+  // lights up for a drag it can actually accept.
 
-  function wireNoteDrag(row, path) {
+  const DRAG = { note: 'text/wb-path', folder: 'text/wb-folder' };
+  const marker = el('div', { class: 'drop-line' });
+
+  const dragKind = ev => (ev.dataTransfer.types.includes(DRAG.note) ? 'note'
+    : ev.dataTransfer.types.includes(DRAG.folder) ? 'folder' : null);
+
+  function wireDrag(row, kind, path) {
     row.addEventListener('dragstart', ev => {
       ev.stopPropagation();
-      ev.dataTransfer.setData('text/wb-path', path);
+      ev.dataTransfer.setData(DRAG[kind], path);
       ev.dataTransfer.effectAllowed = 'move';
     });
   }
 
+  const wireNoteDrag = (row, path) => wireDrag(row, 'note', path);
+
   function wireFolderDrop(row, folderPath) {
     row.addEventListener('dragover', ev => {
-      if (!ev.dataTransfer.types.includes('text/wb-path')) return;
+      if (!ev.dataTransfer.types.includes(DRAG.note)) return;
       ev.preventDefault(); row.classList.add('drop-target');
     });
     row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
     row.addEventListener('drop', async ev => {
-      ev.preventDefault(); ev.stopPropagation(); row.classList.remove('drop-target');
-      const from = ev.dataTransfer.getData('text/wb-path');
-      if (!from || !from.toLowerCase().endsWith('.md')) return;
+      row.classList.remove('drop-target');
+      const from = ev.dataTransfer.getData(DRAG.note);
+      if (!from) return;                  // a folder: leave it to the column to place
+      ev.preventDefault(); ev.stopPropagation();
+      marker.remove();
+      if (!from.toLowerCase().endsWith('.md')) return;
       await moveNote(from, join(folderPath, baseOf(from)));
     });
+  }
+
+  /** Where a row of `kind` dropped at `y` would land in this column. */
+  function landing(host, kind, y) {
+    const rows = [...host.querySelectorAll(`.row[data-kind="${kind}"]`)];
+    for (const row of rows) {
+      const box = row.getBoundingClientRect();
+      if (y < box.top + box.height / 2) return { before: row.dataset.path, node: row };
+    }
+    const last = rows[rows.length - 1];
+    return { before: null, node: last ? last.nextSibling : null };
+  }
+
+  function wireColumn(host, accepts, parent, archive = false) {
+    host.addEventListener('dragover', ev => {
+      const kind = dragKind(ev);
+      if (!kind || !accepts.includes(kind) || (kind === 'note' && parent() === null)) return;
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect = 'move';
+      // A note held over a folder row goes *into* that folder: the row says so
+      // itself, and no insertion line is drawn.
+      if (kind === 'note' && ev.target.closest('.row[data-kind="folder"]')) return marker.remove();
+      const spot = landing(host, kind, ev.clientY);
+      spot.node ? host.insertBefore(marker, spot.node) : host.append(marker);
+    });
+    host.addEventListener('dragleave', ev => {
+      if (!host.contains(ev.relatedTarget)) marker.remove();
+    });
+    host.addEventListener('drop', async ev => {
+      const kind = dragKind(ev);
+      if (!kind || !accepts.includes(kind)) return;
+      ev.preventDefault();
+      marker.remove();
+      const path = ev.dataTransfer.getData(DRAG[kind]);
+      const before = landing(host, kind, ev.clientY).before;
+      if (!path || path === before) return;
+      if (kind === 'note') await dropNote(path, parent(), before);
+      else await dropFolder(path, archive, before);
+    });
+  }
+
+  async function dropNote(from, parent, before) {
+    if (parent === null || !from.toLowerCase().endsWith('.md')) return;
+    let path = from;
+    if (dirOf(from) !== parent) {                  // dragged in from another column
+      const res = await moveNote(from, join(parent, baseOf(from)));
+      if (!res) return;
+      path = res.path;
+    }
+    await reorder(parent, path, before);
+  }
+
+  async function dropFolder(path, archive, before) {
+    const folder = folderByPath(path);
+    if (!folder) return;
+    if (Boolean(folder.archived) !== archive) {
+      try { await api.setArchived(path, archive); }
+      catch (e) { return toast(e.message, true); }
+      if (archive) setArchiveOpen(true);           // so it does not just vanish
+      await refresh();
+    }
+    await reorder('', path, before);
+  }
+
+  /** Save the whole column's order, with `path` moved in front of `before`. */
+  async function reorder(parent, path, before) {
+    const scope = parent ? folderByPath(parent) : root;
+    if (!scope) return;
+    const paths = [...(scope.folders || []).map(f => f.path), ...scope.notes.map(n => n.path)]
+      .filter(p => p !== path);
+    const at = before ? paths.indexOf(before) : -1;
+    at < 0 ? paths.push(path) : paths.splice(at, 0, path);
+    try { await api.setOrder(parent, paths); }
+    catch (e) { return toast(e.message, true); }
+    await refresh();
   }
 
   async function moveNote(from, to) {
@@ -3705,6 +4051,13 @@ const M_tree = (() => {
     if (!res) return;
     await refresh(); onStructure();
     if (res.active) onOpen(res.active);
+    return res;
+  }
+
+  function setArchiveOpen(open) {
+    archiveOpen = open;
+    localStorage.setItem('wb:archive', open ? 'open' : 'closed');
+    paint();
   }
 
   // ── menus ───────────────────────────────────────────────────────────────
@@ -3716,6 +4069,8 @@ const M_tree = (() => {
       { label: 'Rename…', run: () => rename(folder.path) },
       { colors: palette, pick: async color => { await api.setColor(folder.path, color); refresh(); } },
       '-',
+      { label: folder.archived ? 'Take out of archive' : 'Move to archive',
+        run: () => dropFolder(folder.path, !folder.archived, null) },
       { label: 'Move to trash', run: () => trash(folder.path, `folder “${folder.name}” and its pages`) },
     ]);
   }
@@ -3771,6 +4126,7 @@ const M_tree = (() => {
     if (!row) return;
     const label = row.querySelector('.label');
     const before = label.textContent;
+    row.draggable = false;                    // let the pointer select the text
     label.contentEditable = 'plaintext-only'; label.spellcheck = true; label.focus();
     const range = document.createRange();
     range.selectNodeContents(label);
@@ -3834,6 +4190,7 @@ const M_tree = (() => {
   function mount(opts) {
     onOpen = opts.onOpen;
     onStructure = opts.onStructure || (() => {});
+    onScope = opts.onScope || (() => {});
     $('#new-note').onclick = () => newNote();
     $('#new-folder').onclick = () => newFolder();
 
@@ -3860,19 +4217,48 @@ const M_tree = (() => {
       showMenu(ev.clientX, ev.clientY, [{ label: 'New page here', run: () => newNote(selectedFolder) }]);
     });
 
-    $('#root-list').addEventListener('dragover', ev => {
-      if (ev.dataTransfer.types.includes('text/wb-path')) ev.preventDefault();
+    // A drag abandoned with Escape never reaches a drop, so the line that was
+    // following it has to be swept up on its own.
+    document.addEventListener('dragend', () => marker.remove());
+    wireColumn($('#root-list'), ['note', 'folder'], () => '');
+    wireColumn($('#file-list'), ['note'], () => selectedFolder);
+    wireColumn($('#archive-list'), ['folder'], () => null, true);
+    mountArchive();
+  }
+
+  /** The Archive drawer: open/shut, its search checkbox, and dropping into it. */
+  function mountArchive() {
+    const box = $('#archive');
+    const head = $('#archive-head');
+    head.onclick = () => setArchiveOpen(!archiveOpen);
+    head.onkeydown = ev => {
+      if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); setArchiveOpen(!archiveOpen); }
+    };
+    // The checkbox lives inside the header but is not a way to open it.
+    $('.archive-scope').addEventListener('click', ev => ev.stopPropagation());
+    $('#archive-search').addEventListener('change', ev => {
+      searchArchive = ev.target.checked;
+      localStorage.setItem('wb:archive-search', searchArchive ? 'on' : 'off');
+      onScope();
     });
-    $('#root-list').addEventListener('drop', ev => {
-      if (ev.target.closest('.row')) return;
-      ev.preventDefault();
-      const from = ev.dataTransfer.getData('text/wb-path');
-      if (from && dirOf(from)) moveNote(from, baseOf(from));
+
+    head.addEventListener('dragover', ev => {
+      if (dragKind(ev) !== 'folder') return;
+      ev.preventDefault(); ev.dataTransfer.dropEffect = 'move';
+      box.classList.add('drop-target'); marker.remove();
+    });
+    head.addEventListener('dragleave', () => box.classList.remove('drop-target'));
+    head.addEventListener('drop', ev => {
+      if (dragKind(ev) !== 'folder') return;
+      ev.preventDefault(); ev.stopPropagation();
+      box.classList.remove('drop-target');
+      const path = ev.dataTransfer.getData(DRAG.folder);
+      if (path) dropFolder(path, true, null);
     });
   }
 
   return { allNotes, findByName, setActive, refresh, applyFilter, firstVisibleNote, newNote,
-    newFolder, rename, mount };
+    newFolder, rename, mount, searchArchived: () => searchArchive };
 })();
 
 // ══ palette ═════════════════════════════════════════════════════════════════
@@ -4329,7 +4715,11 @@ const M_toolbar = (() => {
 
   function syncTableBar() {
     const target = tableTarget();
-    $('#table-bar').hidden = !target;
+    const bar = $('#table-bar');
+    bar.hidden = !target;
+    // The backlinks chip sits under the table tools, so it has to know how
+    // tall they came out — the row of buttons is not a fixed height.
+    $('#stage').style.setProperty('--table-bar-h', target ? bar.offsetHeight + 'px' : '0px');
     if (!target) return;
     $('#table-header').classList.toggle('on', tbl.hasHeaderRow(target.table));
     $('#table-rules').classList.toggle('on', tbl.bordersOn(target.table));
@@ -4779,6 +5169,7 @@ const M_main = () => {
     if (ev.key === 'Enter') { ev.preventDefault(); $('#note-title').blur(); }
   });
   $('#note-title').addEventListener('blur', async () => {
+    if (M_store.editingBlocked()) return;
     commit();
     const from = store.path;
     const wanted = ($('#note-title').textContent.trim() || 'Untitled')
@@ -4810,10 +5201,11 @@ const M_main = () => {
 
   async function go(path) {
     try {
-      await openNote(path);
-      tree.setActive(path);
+      if (!await openNote(path)) return false;
+      tree.setActive(store.path);
       refreshLinks();
-    } catch (e) { toast(e.message, true); }
+      return true;
+    } catch (e) { toast(e.message, true); return false; }
   }
 
   rt.setElementItems(id => {
@@ -4882,7 +5274,7 @@ const M_main = () => {
     }
     $('#search-clear').hidden = false;
     try {
-      const { matches, terms } = await api.search(q);
+      const { matches, terms } = await api.search(q, tree.searchArchived());
       if (version !== searchVersion) return;
       tree.applyFilter(matches, terms);
       searchTerms = terms.filter(Boolean);
@@ -5049,6 +5441,7 @@ const M_main = () => {
   on('load', () => { paintHeader(); toolbar.syncState(); toolbar.reflow(); minimap.draw(); repaintMatches(); });
   on('state', () => {
     document.body.classList.toggle('no-note', !store.path);
+    $('#editor').inert = M_store.editingBlocked();
     $('#save-state').textContent = store.dirty ? 'saving…' : 'saved';
     $('#save-state').classList.toggle('dirty', store.dirty);
     paintHeader();
@@ -5062,7 +5455,11 @@ const M_main = () => {
   minimap.mount();
   toolbar.mount();
   history.mount({ onRevert: () => { toolbar.syncState(); minimap.draw(); repaintMatches(); } });
-  tree.mount({ onOpen: go, onStructure: () => refreshLinks() });
+  tree.mount({
+    onOpen: go,
+    onStructure: () => refreshLinks(),
+    onScope: () => runSearch($('#search').value, ++searchVersion),
+  });
   palette.mount({
     onOpen: go,
     commands: [

@@ -174,7 +174,13 @@ button { background: none; border: 0; cursor: pointer; }
 /* ── OneNote-style root / page columns ───────────────────────────────── */
 .notebook-nav { display: grid; grid-template-columns: minmax(145px, .9fr) minmax(165px, 1.1fr); flex: 1 1 auto; min-height: 0; }
 .nav-column { min-width: 0; overflow: auto; padding: 6px 6px 12px; }
-.root-column { border-right: 1px solid var(--line); }
+/* The root column holds its list above a pinned Archive drawer, so the column
+   itself stops scrolling and the two parts scroll independently. */
+.root-column {
+  border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0;
+}
+#root-list { flex: 1 1 auto; min-height: 0; overflow: auto; padding-bottom: 12px; }
 .nav-empty { padding: 8px 7px; color: var(--fg-faint); font-size: 11.5px; line-height: 1.4; }
 .row {
   display: flex; align-items: center; gap: 7px; min-height: 30px;
@@ -200,6 +206,31 @@ button { background: none; border: 0; cursor: pointer; }
   background: var(--canvas); outline: 1px solid var(--sel-ring); border-radius: 3px; padding: 0 3px;
 }
 
+/* ── Archive: closed by default, opening to half the column ──────────── */
+.archive {
+  flex: 0 0 auto; min-height: 0; max-height: 50%;
+  display: flex; flex-direction: column;
+  margin: 0 -6px; border-top: 1px solid var(--line); background: var(--panel);
+}
+.archive-head {
+  display: flex; align-items: center; gap: 7px; min-height: 30px;
+  padding: 0 10px 0 12px; cursor: default; user-select: none;
+  color: var(--fg-faint); font-size: 12px; font-weight: 500;
+}
+.archive-head:hover { background: var(--panel-2); }
+.archive-head .twisty { flex: 0 0 auto; font-size: 9px; transition: transform .12s; }
+.archive.open .archive-head .twisty { transform: rotate(90deg); }
+.archive-head .label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.archive-head .count { flex: 1 1 auto; opacity: .7; }
+.archive-head .archive-scope { flex: 0 0 auto; display: flex; align-items: center; }
+.archive-head input { margin: 0; cursor: pointer; accent-color: var(--sel-ring); }
+.archive.drop-target { outline: 2px dashed var(--sel-ring); outline-offset: -2px; }
+.archive.holds-active .archive-head .label { color: var(--fg); }
+.archive-list { min-height: 0; overflow: auto; padding: 2px 6px 8px; }
+
+/* Where a dragged row would land, in whichever column is under the cursor. */
+.drop-line { height: 0; border-top: 2px solid var(--sel-ring); margin: -1px 2px; }
+
 .side-foot {
   display: flex; align-items: center; gap: 6px; padding: 6px 10px;
   border-top: 1px solid var(--line); font-size: 11.5px; color: var(--fg-faint);
@@ -219,8 +250,15 @@ body.pane-hidden .pane-btn svg .f { fill: none; }
 /* ── editor shell ─────────────────────────────────────────────────────── */
 #editor { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; background: var(--panel); }
 
-#note-head { padding: 0 20px; }
-#note-head:has(.meta-row:not([hidden])) { padding: 4px 20px 5px; border-bottom: 1px solid var(--line-soft); }
+/* The backlinks bar rides *over* the top-left of the page, the way the table
+   tools do: it is a few words, so it takes a few words' worth of room rather
+   than a band across the pane — and it drops below the table tools whenever
+   those are up. */
+#note-head {
+  position: absolute; left: 0; z-index: 7;
+  top: var(--table-bar-h, 0px); padding: 4px 20px;
+  pointer-events: none;
+}
 .title-cell { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 0 0 auto; }
 .note-title {
   font-size: 16px; font-weight: 600; letter-spacing: -.1px; outline: none;
@@ -230,7 +268,12 @@ body.pane-hidden .pane-btn svg .f { fill: none; }
 .note-title:not(:focus) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .note-title:focus { max-width: 42ch; overflow-x: auto; white-space: nowrap; }
 .note-title:empty::before { content: attr(data-placeholder); color: var(--fg-faint); }
-.meta-row { display: flex; gap: 8px; align-items: center; font-size: 11.5px; color: var(--fg-faint); }
+.meta-row {
+  display: inline-flex; width: fit-content; max-width: 100%;
+  gap: 8px; align-items: center; font-size: 11.5px; color: var(--fg-faint);
+  padding: 2px 9px; border: 1px solid var(--line-soft); border-radius: 999px;
+  background: var(--panel); pointer-events: auto;
+}
 .meta-row .dot { opacity: .5; }
 #backlinks a, .meta a { color: var(--accent); text-decoration: none; }
 #backlinks a:hover { text-decoration: underline; }
@@ -600,11 +643,10 @@ body.no-note .stage::after {
   body.printing #sidebar, body.printing #splitter, body.printing .toolbar,
   body.printing .minimap, body.printing .overlay, body.printing .empty-hint,
   body.printing .pop, body.printing .ctx, body.printing .palette, body.printing .toast,
-  body.printing .side-foot { display: none !important; }
+  body.printing .side-foot, body.printing #note-head { display: none !important; }
   body.printing, body.printing #app, body.printing #editor { background: #fff; }
   body.printing .stage { overflow: visible; background: #fff; }
   body.printing .stage::before { display: none; }
-  body.printing #note-head { border: 0; padding-left: 0; }
   /* The title rides in the toolbar now, so print that one cell and nothing else. */
   body.printing #toolbar { display: block !important; border: 0; padding: 0 0 8px; }
   body.printing #toolbar > *:not(.title-cell) { display: none !important; }

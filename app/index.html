@@ -36,6 +36,19 @@
     <div class="notebook-nav">
       <section class="nav-column root-column">
         <nav id="root-list" aria-label="Root folders and notes"></nav>
+        <div id="archive" class="archive">
+          <div class="archive-head" id="archive-head" role="button" tabindex="0"
+               aria-expanded="false" aria-controls="archive-list"
+               title="Folders you have dragged out of the way">
+            <span class="twisty" aria-hidden="true">▸</span>
+            <span class="label">Archive</span>
+            <span class="count" id="archive-count"></span>
+            <label class="archive-scope" title="Search archived pages too">
+              <input type="checkbox" id="archive-search" aria-label="Search archived pages too">
+            </label>
+          </div>
+          <nav id="archive-list" class="archive-list" aria-label="Archived folders" hidden></nav>
+        </div>
       </section>
       <section class="nav-column file-column">
         <nav id="file-list" aria-label="Files in selected folder"></nav>
@@ -153,16 +166,15 @@
       </div>
     </div>
 
-    <header id="note-head">
-      <div class="meta-row" id="meta-row" hidden>
-        <span class="meta" id="backlinks"></span>
-      </div>
-    </header>
-
     <div id="stage" class="stage">
       <div id="world" class="world">
         <svg id="vector" class="vector"></svg>
       </div>
+      <header id="note-head">
+        <div class="meta-row" id="meta-row" hidden>
+          <span class="meta" id="backlinks"></span>
+        </div>
+      </header>
       <div id="table-bar" class="toolbar table-bar" hidden>
         <span class="bar-label">Table</span>
         <div class="sep"></div>
