@@ -8,8 +8,8 @@ No database, no build step, no dependencies. Python's standard library serves
 it; the browser does the rest.
 
 ```sh
-./paper              # http://127.0.0.1:8420, opens your browser
-./paper --port 9000  # or --host, --no-open
+./app/paper              # http://127.0.0.1:8420, opens your browser
+./app/paper --port 9000  # or --host, --no-open
 ```
 
 ---
@@ -283,12 +283,13 @@ character, which is what keeps the Markdown clean.
 ## Layout of the code
 
 ```
-server.py         REST API, static files, boolean search, backlinks — stdlib only
-app/index.html    the shell
-app/css/app.css   fonts, both palettes, then layout and canvas chrome
-app/js/app.js     the whole front end
-app/test.html     front-end regression suite — open it in the browser
-test_server.py    backend regression suite — python3 -m unittest -v test_server.py
+app/paper           launcher
+app/server.py       REST API, static files, boolean search, backlinks — stdlib only
+app/index.html      the shell
+app/css/app.css     fonts, both palettes, then layout and canvas chrome
+app/js/app.js       the whole front end
+app/test.html       front-end regression suite — open it in the browser
+app/test_server.py  backend regression suite — python3 -m unittest -v app/test_server.py
 ```
 
 `app/js/app.js` is one file, but it is still built out of the same sections it
@@ -320,7 +321,7 @@ notebook metadata, or the app's normal browser storage. Start Paper and open
 <http://127.0.0.1:8420/test.html>. The heading and tab title must report the
 full result: `214 passed, 0 failed`.
 
-`test_server.py` covers what a browser cannot see: it runs the real handler over
+`app/test_server.py` covers what a browser cannot see: it runs the real handler over
 HTTP against a throwaway notebook in a temporary directory — your own notes are
 never opened — and asserts that renaming or moving a note carries its own images
 and only its own, and that the versions and action steps kept for it come along
@@ -330,13 +331,13 @@ that overlapping metadata changes are serialized. It also covers the sidebar
 order and the archive: that a dragged order outlives the process that saved it,
 that renaming or trashing something keeps its place or forgets it, and that an
 archived folder stays out of search until it is asked for. Run
-`python3 -m unittest -v test_server.py` after changing `server.py`; the expected
+`python3 -m unittest -v app/test_server.py` after changing `app/server.py`; the expected
 result is all 28 tests passing followed by `OK`. It needs nothing installed.
 
 For a final release check, run both suites, then run:
 
 ```sh
-python3 -m py_compile server.py test_server.py
+python3 -m py_compile app/server.py app/test_server.py
 git diff --check
 ```
 

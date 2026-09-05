@@ -3,10 +3,11 @@
 Paper - a local, file-backed notebook.
 
 Zero dependencies: Python standard library only. Notes live as Markdown files
-under ./notes and the on-disk folder tree IS the notebook tree.
+under the project's notes/ folder and the on-disk folder tree IS the notebook
+tree.
 
-    python3 server.py            # http://127.0.0.1:8420
-    python3 server.py --port 9000 --no-open
+    python3 app/server.py            # http://127.0.0.1:8420
+    python3 app/server.py --port 9000 --no-open
 """
 
 import argparse
@@ -25,8 +26,8 @@ from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
-APP = ROOT / "app"
+APP = Path(__file__).resolve().parent
+ROOT = APP.parent
 NOTES = ROOT / "notes"
 META_FILE = NOTES / ".paper.json"
 HISTORY = NOTES / ".history"

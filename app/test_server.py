@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Backend regressions for server.py - the half of the app app/test.html cannot see.
+Backend regressions for server.py - the half of app/test.html that it cannot see.
 
-    python3 test_server.py
+    python3 app/test_server.py
 
 Every test runs the real handler over HTTP against a throwaway notebook in a
 temporary directory. Your own notes are never opened.
@@ -11,6 +11,7 @@ temporary directory. Your own notes are never opened.
 import json
 import os
 import shutil
+import sys
 import tempfile
 import time
 import unittest
@@ -22,6 +23,7 @@ from pathlib import Path
 from threading import Event, Thread
 from unittest import mock
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import server
 
 
